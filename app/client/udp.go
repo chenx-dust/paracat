@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/chenx-dust/paracat/packet"
+	"github.com/chenx-dust/paracat/transport"
 )
 
 type udpRelay struct {
@@ -31,6 +31,11 @@ func (client *Client) connectUDPRelay(relay *udpRelay) error {
 			time.Sleep(client.cfg.ReconnectDelay)
 			continue
 		}
+		err = transport.EnableGRO(relay.conn)
+		// relay.gro = err == nil
+		// err = client.enableGSO(relay.conn)
+		// relay.gso = err == nil
+
 		relay.ctx, relay.cancel = context.WithCancel(context.Background())
 		client.dispatcher.NewOutput(relay)
 		go client.handleUDPRelayCancel(relay)
@@ -58,21 +63,12 @@ func (client *Client) handleUDPRelayRecv(relay *udpRelay) {
 			return
 		default:
 		}
-		buf := make([]byte, client.cfg.BufferSize)
-		n, err := relay.conn.Read(buf)
+		packets, _, err := transport.ReceiveUDPPackets(relay.conn)
 		if err != nil {
-			log.Println("error reading from reverse conn:", err)
-			log.Println("close reverse conn from:", relay.conn.RemoteAddr())
-			return
-		}
-
-		newPacket, err := packet.Unpack(buf[:n])
-		if err != nil {
-			log.Println("error unpacking packet:", err)
 			continue
 		}
 
-		client.filterChan.Forward(newPacket)
+		client.filterChan.Forward(packets)
 	}
 }
 

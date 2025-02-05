@@ -1,7 +1,7 @@
 {
     "mode": "server",
-    "listen_addr": "0.0.0.0:9001",
-    "remote_addr": "127.0.0.1:9003",
+    "listen_addr": "[::]:9001",
+    "remote_addr": "[::1]:9003",
     "report_interval": "10s",
     "dispatch_type": "concurrent",
     "udp_timeout": "10m"

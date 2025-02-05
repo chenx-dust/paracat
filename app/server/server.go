@@ -9,6 +9,7 @@ import (
 
 	"github.com/chenx-dust/paracat/channel"
 	"github.com/chenx-dust/paracat/config"
+	"github.com/chenx-dust/paracat/transport"
 )
 
 type Server struct {
@@ -23,7 +24,6 @@ type Server struct {
 	sourceMutex    sync.RWMutex
 	sourceUDPAddrs map[string]*udpConnContext
 
-	forwardMutex sync.RWMutex
 	forwardConns map[uint16]*net.UDPConn
 }
 
@@ -60,7 +60,12 @@ func (server *Server) Run() error {
 	log.Println("listening on", server.cfg.ListenAddr)
 	log.Println("dialing to", server.cfg.RemoteAddr)
 
-	server.filterChan.SetOutCallback(server.handleForward)
+	transport.EnableGRO(server.udpListener)
+
+	// err = server.enableGSO(server.udpListener)
+	// server.isGSOEnabled = err == nil
+
+	go server.forwardLoop(server.filterChan.GetOutChan())
 
 	wg := sync.WaitGroup{}
 	wg.Add(3)

@@ -6,12 +6,12 @@ import (
 
 	"github.com/chenx-dust/paracat/channel"
 	"github.com/chenx-dust/paracat/packet"
+	"github.com/chenx-dust/paracat/transport"
 )
 
 func (client *Client) handleForward() {
 	for {
-		buf := make([]byte, client.cfg.BufferSize)
-		n, addr, err := client.udpListener.ReadFromUDP(buf)
+		packets, addr, err := transport.ReceiveUDPRawPackets(client.udpListener)
 		if err != nil {
 			log.Fatalln("error reading from udp conn:", err)
 		}
@@ -25,15 +25,25 @@ func (client *Client) handleForward() {
 			client.connMutex.Unlock()
 			log.Println("new connection from:", addr.String())
 		}
-		packetID := channel.NewPacketID(&client.idIncrement)
+		for _, rawPacket := range packets {
+			packetID := channel.NewPacketID(&client.idIncrement)
 
-		newPacket := &packet.Packet{
-			Buffer:   buf[:n],
-			ConnID:   connID,
-			PacketID: packetID,
+			newPacket := &packet.Packet{
+				Buffer:   rawPacket,
+				ConnID:   connID,
+				PacketID: packetID,
+			}
+			packed := newPacket.Pack()
+			client.dispatcher.Dispatch(packed)
 		}
-		packed := newPacket.Pack()
-		client.dispatcher.Dispatch(packed)
+	}
+}
+
+func (client *Client) reverseLoop(ch <-chan []*packet.Packet) {
+	for packets := range ch {
+		for _, newPacket := range packets {
+			client.handleReverse(newPacket)
+		}
 	}
 }
 

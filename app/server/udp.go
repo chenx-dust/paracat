@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/chenx-dust/paracat/packet"
+	"github.com/chenx-dust/paracat/transport"
 )
 
 type udpConnContext struct {
@@ -36,21 +36,13 @@ func (server *Server) handleUDPConnContextCancel(ctx *udpConnContext) {
 
 func (server *Server) handleUDP() {
 	for {
-		buf := make([]byte, server.cfg.BufferSize)
-		n, udpAddr, err := server.udpListener.ReadFromUDP(buf)
+		packets, udpAddr, err := transport.ReceiveUDPPackets(server.udpListener)
 		if err != nil {
-			log.Fatalln("error reading packet:", err)
-		}
-
-		newPacket, err := packet.Unpack(buf[:n])
-		if err != nil {
-			log.Println("error unpacking packet:", err)
 			continue
 		}
 
 		server.handleUDPAddr(udpAddr)
-
-		server.filterChan.Forward(newPacket)
+		server.filterChan.Forward(packets)
 	}
 }
 

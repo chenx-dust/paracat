@@ -34,7 +34,7 @@ type JSONRelayType struct {
 }
 
 const defaultWeight = 1
-const defaultBufferSize = 1500
+const defaultBufferSize = 65535
 const defaultReportInterval = 0 * time.Second
 const defaultReconnectTimes = 3
 const defaultReconnectDelay = 5 * time.Second

@@ -2,16 +2,18 @@
 package channel
 
 import (
-	"log"
 	"sync"
 	"sync/atomic"
 
 	"github.com/chenx-dust/paracat/packet"
 )
 
+const CHANNEL_BUFFER_SIZE = 64
+
 type FilterChannel struct {
-	outCallback func(packet *packet.Packet) (int, error)
-	filter      *PacketFilter
+	// outCallback func(packet *packet.Packet) (int, error)
+	filter  *PacketFilter
+	chanOut chan []*packet.Packet
 
 	StatisticIn  *packet.PacketStatistic
 	StatisticOut *packet.PacketStatistic
@@ -20,26 +22,31 @@ type FilterChannel struct {
 func NewFilterChannel() *FilterChannel {
 	return &FilterChannel{
 		filter:       NewPacketFilter(),
+		chanOut:      make(chan []*packet.Packet, CHANNEL_BUFFER_SIZE),
 		StatisticIn:  packet.NewPacketStatistic(),
 		StatisticOut: packet.NewPacketStatistic(),
 	}
 }
 
-func (ch *FilterChannel) SetOutCallback(outCallback func(packet *packet.Packet) (int, error)) {
-	ch.outCallback = outCallback
+func (ch *FilterChannel) GetOutChan() <-chan []*packet.Packet {
+	return ch.chanOut
 }
 
-func (ch *FilterChannel) Forward(newPacket *packet.Packet) {
-	ch.StatisticIn.CountPacket(uint32(len(newPacket.Buffer)))
-	if ch.filter.CheckDuplicatePacketID(newPacket.PacketID) {
-		return
+func (ch *FilterChannel) Forward(newPackets []*packet.Packet) {
+	inSize := 0
+	outSize := 0
+	fwdPackets := make([]*packet.Packet, 0, len(newPackets))
+	for _, newPacket := range newPackets {
+		inSize += len(newPacket.Buffer)
+		if ch.filter.CheckDuplicatePacketID(newPacket.PacketID) {
+			continue
+		}
+		outSize += len(newPacket.Buffer)
+		fwdPackets = append(fwdPackets, newPacket)
 	}
-	n, err := ch.outCallback(newPacket)
-	if err == nil {
-		ch.StatisticOut.CountPacket(uint32(n))
-	} else {
-		log.Println("error forwarding packet:", err)
-	}
+	ch.StatisticIn.CountPacket(uint32(inSize))
+	ch.StatisticOut.CountPacket(uint32(outSize))
+	ch.chanOut <- fwdPackets
 }
 
 type PacketFilter struct {

@@ -5,13 +5,21 @@ import (
 	"log"
 	"net"
 
-	"github.com/chenx-dust/paracat/packet"
+	"github.com/chenx-dust/paracat/transport"
 )
 
 type tcpConnContext struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	conn   *net.TCPConn
+	ctx     context.Context
+	cancel_ context.CancelFunc
+	conn    *net.TCPConn
+}
+
+func (ctx *tcpConnContext) Done() <-chan struct{} {
+	return ctx.ctx.Done()
+}
+
+func (ctx *tcpConnContext) Cancel() {
+	ctx.cancel_()
 }
 
 func (server *Server) newTCPConnContext(conn *net.TCPConn) *tcpConnContext {
@@ -41,35 +49,5 @@ func (server *Server) handleTCP() {
 func (server *Server) handleTCPConn(conn *net.TCPConn) {
 	log.Println("new tcp connection from", conn.RemoteAddr().String())
 	ctx := server.newTCPConnContext(conn)
-	go server.handleTCPConnRecv(ctx)
-}
-
-func (server *Server) handleTCPConnRecv(ctx *tcpConnContext) {
-	defer ctx.cancel()
-	for {
-		select {
-		case <-ctx.ctx.Done():
-			return
-		default:
-		}
-		newPacket, err := packet.ReadPacket(ctx.conn)
-		if err != nil {
-			log.Println("error reading packet:", err)
-			log.Println("stop handling connection from:", ctx.conn.RemoteAddr().String())
-			return
-		}
-
-		server.filterChan.Forward(newPacket)
-	}
-}
-
-func (ctx *tcpConnContext) Write(packet []byte) (n int, err error) {
-	n, err = ctx.conn.Write(packet)
-	if err != nil {
-		log.Println("error writing packet:", err)
-		log.Println("stop handling connection to:", ctx.conn.RemoteAddr().String())
-	} else if n != len(packet) {
-		log.Println("error writing packet: wrote", n, "bytes instead of", len(packet))
-	}
-	return
+	go transport.TCPFowrardLoop(ctx, conn, server.filterChan)
 }

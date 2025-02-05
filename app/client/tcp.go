@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/chenx-dust/paracat/packet"
+	"github.com/chenx-dust/paracat/transport"
 )
 
 type tcpRelay struct {
@@ -14,6 +14,14 @@ type tcpRelay struct {
 	cancel context.CancelFunc
 	addr   *net.TCPAddr
 	conn   *net.TCPConn
+}
+
+func (relay *tcpRelay) Done() <-chan struct{} {
+	return relay.ctx.Done()
+}
+
+func (relay *tcpRelay) Cancel() {
+	relay.cancel()
 }
 
 func (client *Client) newTCPRelay(addr *net.TCPAddr) (relay *tcpRelay, err error) {
@@ -34,7 +42,7 @@ func (client *Client) connectTCPRelay(relay *tcpRelay) error {
 		relay.ctx, relay.cancel = context.WithCancel(context.Background())
 		client.dispatcher.NewOutput(relay)
 		go client.handleTCPRelayCancel(relay)
-		go client.handleTCPRelayRecv(relay)
+		go transport.TCPFowrardLoop(relay, relay.conn, client.filterChan)
 		return nil
 	}
 	return err
@@ -47,25 +55,6 @@ func (client *Client) handleTCPRelayCancel(relay *tcpRelay) {
 	err := client.connectTCPRelay(relay)
 	if err != nil {
 		log.Println("failed to reconnect tcp relay:", err)
-	}
-}
-
-func (client *Client) handleTCPRelayRecv(ctx *tcpRelay) {
-	defer ctx.cancel()
-	for {
-		select {
-		case <-ctx.ctx.Done():
-			return
-		default:
-		}
-		packet, err := packet.ReadPacket(ctx.conn)
-		if err != nil {
-			log.Println("error reading from reverse conn:", err)
-			log.Println("close reverse conn from:", ctx.conn.RemoteAddr())
-			return
-		}
-
-		client.filterChan.Forward(packet)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/chenx-dust/paracat/channel"
 	"github.com/chenx-dust/paracat/config"
+	"github.com/chenx-dust/paracat/transport"
 )
 
 type Client struct {
@@ -48,9 +49,14 @@ func (client *Client) Run() error {
 		return err
 	}
 
+	err = transport.EnableGRO(client.udpListener)
+	if err != nil {
+		return err
+	}
 	log.Println("listening on", client.cfg.ListenAddr)
 
-	client.filterChan.SetOutCallback(client.handleReverse)
+	// client.filterChan.SetOutCallback(client.handleReverse)
+	go client.reverseLoop(client.filterChan.GetOutChan())
 
 	client.dialRelays()
 
