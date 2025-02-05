@@ -64,6 +64,8 @@ func (d *Dispatcher) Dispatch(data []byte) {
 		n, err := d.outConns[d.roundRobinIdx].Write(data)
 		if err == nil {
 			d.StatisticOut.CountPacket(uint32(n))
+		} else {
+			log.Println("error dispatching packet:", err)
 		}
 	case config.ConcurrentDispatchType:
 		d.StatisticIn.CountPacket(uint32(len(data)))
@@ -71,6 +73,8 @@ func (d *Dispatcher) Dispatch(data []byte) {
 			n, err := outConn.Write(data)
 			if err == nil {
 				d.StatisticOut.CountPacket(uint32(n))
+			} else {
+				log.Println("error dispatching packet:", err)
 			}
 		}
 	}

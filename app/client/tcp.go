@@ -74,6 +74,7 @@ func (relay *tcpRelay) Write(packet []byte) (n int, err error) {
 	if err != nil {
 		log.Println("error writing packet:", err)
 		log.Println("stop handling connection to:", relay.conn.RemoteAddr().String())
+		relay.cancel()
 	} else if n != len(packet) {
 		log.Println("error writing packet: wrote", n, "bytes instead of", len(packet))
 	}

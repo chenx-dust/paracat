@@ -32,8 +32,11 @@ flowchart LR
 
 ## TODO
 
+- [X] Round-robin mode
 - [ ] Remove unused UDP connections
 - [ ] Optimize delay
 - [ ] Re-connect after EOF
-- [ ] Round-robin mode
 - [ ] Congestion control algorithm
+- [ ] Fake TCP with eBPF
+- [ ] GRO & GSO
+- [ ] UDP MTU Discovery

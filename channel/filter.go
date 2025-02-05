@@ -2,6 +2,7 @@
 package channel
 
 import (
+	"log"
 	"sync"
 	"sync/atomic"
 
@@ -34,8 +35,10 @@ func (ch *FilterChannel) Forward(newPacket *packet.Packet) {
 		return
 	}
 	n, err := ch.outCallback(newPacket)
-	if err != nil {
+	if err == nil {
 		ch.StatisticOut.CountPacket(uint32(n))
+	} else {
+		log.Println("error forwarding packet:", err)
 	}
 }
 

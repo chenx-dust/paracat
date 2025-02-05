@@ -4,6 +4,9 @@ import (
 	"flag"
 	"log"
 
+	"net/http"
+	_ "net/http/pprof"
+
 	"github.com/chenx-dust/paracat/app"
 	"github.com/chenx-dust/paracat/app/client"
 	"github.com/chenx-dust/paracat/app/relay"
@@ -13,7 +16,18 @@ import (
 
 func main() {
 	cfgFilename := flag.String("c", "config.json", "config file")
+	enablePprof := flag.Bool("pprof", false, "enable pprof")
 	flag.Parse()
+
+	if *enablePprof {
+		go func() {
+			log.Println("starting pprof server on localhost:6060")
+			err := http.ListenAndServe("localhost:6060", nil)
+			if err != nil {
+				log.Fatalf("Failed to start pprof: %v", err)
+			}
+		}()
+	}
 
 	log.Println("loading config from", *cfgFilename)
 	cfg, err := config.LoadFromFile(*cfgFilename)
