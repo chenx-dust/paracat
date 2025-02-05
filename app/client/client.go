@@ -30,7 +30,7 @@ type Client struct {
 func NewClient(cfg *config.Config) *Client {
 	return &Client{
 		cfg:           cfg,
-		filterChan:    channel.NewFilterChannel(),
+		filterChan:    channel.NewFilterChannel(cfg.ChannelSize),
 		dispatcher:    channel.NewDispatcher(cfg.DispatchType),
 		connIDAddrMap: make(map[uint16]*net.UDPAddr),
 		connAddrIDMap: make(map[string]uint16),
@@ -49,14 +49,12 @@ func (client *Client) Run() error {
 		return err
 	}
 
-	err = transport.EnableGRO(client.udpListener)
-	if err != nil {
-		return err
-	}
+	transport.EnableGRO(client.udpListener)
+	transport.EnableGSO(client.udpListener)
+
 	log.Println("listening on", client.cfg.ListenAddr)
 
-	// client.filterChan.SetOutCallback(client.handleReverse)
-	go client.reverseLoop(client.filterChan.GetOutChan())
+	go client.handleReverse(client.filterChan.GetOutChan())
 
 	client.dialRelays()
 

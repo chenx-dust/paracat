@@ -32,7 +32,7 @@ type Config struct {
 	RemoteAddr     string        // not necessary in ClientMode
 	RelayServers   []RelayServer // only used in ClientMode
 	RelayType      RelayType     // only used in RelayMode
-	BufferSize     int
+	ChannelSize    int
 	ReportInterval time.Duration
 	ReconnectTimes int           // only used in ClientMode
 	ReconnectDelay time.Duration // only used in ClientMode

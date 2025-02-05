@@ -3,7 +3,6 @@ package channel
 
 import (
 	"errors"
-	"io"
 	"log"
 	"sync"
 
@@ -13,7 +12,7 @@ import (
 
 type Dispatcher struct {
 	connMutex     sync.RWMutex
-	outConns      []io.Writer
+	outChans      []chan<- [][]byte
 	roundRobinIdx int
 	mode          config.DispatchType
 
@@ -27,7 +26,7 @@ func NewDispatcher(mode config.DispatchType) *Dispatcher {
 	}
 	log.Println("new dispatcher with mode:", config.DispatchTypeToString(mode))
 	return &Dispatcher{
-		outConns:      make([]io.Writer, 0),
+		outChans:      make([]chan<- [][]byte, 0),
 		roundRobinIdx: 0,
 		mode:          mode,
 		StatisticIn:   packet.NewPacketStatistic(),
@@ -35,46 +34,49 @@ func NewDispatcher(mode config.DispatchType) *Dispatcher {
 	}
 }
 
-func (d *Dispatcher) NewOutput(conn io.Writer) {
+func (d *Dispatcher) NewOutput(ch chan<- [][]byte) {
 	d.connMutex.Lock()
 	defer d.connMutex.Unlock()
-	d.outConns = append(d.outConns, conn)
+	d.outChans = append(d.outChans, ch)
 }
 
-func (d *Dispatcher) RemoveOutput(conn io.Writer) error {
+func (d *Dispatcher) RemoveOutput(ch chan<- [][]byte) error {
 	d.connMutex.Lock()
 	defer d.connMutex.Unlock()
-	for i := 0; i < len(d.outConns); i++ {
-		if d.outConns[i] == conn {
-			d.outConns[i] = d.outConns[len(d.outConns)-1]
-			d.outConns = d.outConns[:len(d.outConns)-1]
+	for i := 0; i < len(d.outChans); i++ {
+		if d.outChans[i] == ch {
+			d.outChans[i] = d.outChans[len(d.outChans)-1]
+			d.outChans = d.outChans[:len(d.outChans)-1]
+			close(ch)
 			return nil
 		}
 	}
 	return errors.New("channel not found")
 }
 
-func (d *Dispatcher) Dispatch(data []byte) {
+func (d *Dispatcher) Dispatch(data [][]byte) {
+	totalSize := 0
+	for _, packet := range data {
+		totalSize += len(packet)
+	}
 	d.connMutex.RLock()
 	defer d.connMutex.RUnlock()
 	switch d.mode {
 	case config.RoundRobinDispatchType:
-		d.StatisticIn.CountPacket(uint32(len(data)))
-		d.roundRobinIdx = (d.roundRobinIdx + 1) % len(d.outConns)
-		n, err := d.outConns[d.roundRobinIdx].Write(data)
-		if err == nil {
-			d.StatisticOut.CountPacket(uint32(n))
-		} else {
-			log.Println("error dispatching packet:", err)
+		d.StatisticIn.CountPacket(uint32(totalSize))
+		d.roundRobinIdx = (d.roundRobinIdx + 1) % len(d.outChans)
+		select {
+		case d.outChans[d.roundRobinIdx] <- data:
+			d.StatisticOut.CountPacket(uint32(totalSize))
+		default:
 		}
 	case config.ConcurrentDispatchType:
-		d.StatisticIn.CountPacket(uint32(len(data)))
-		for _, outConn := range d.outConns {
-			n, err := outConn.Write(data)
-			if err == nil {
-				d.StatisticOut.CountPacket(uint32(n))
-			} else {
-				log.Println("error dispatching packet:", err)
+		d.StatisticIn.CountPacket(uint32(totalSize))
+		for _, outChan := range d.outChans {
+			select {
+			case outChan <- data:
+				d.StatisticOut.CountPacket(uint32(totalSize))
+			default:
 			}
 		}
 	}

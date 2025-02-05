@@ -30,7 +30,7 @@ type Server struct {
 func NewServer(cfg *config.Config) *Server {
 	return &Server{
 		cfg:            cfg,
-		filterChan:     channel.NewFilterChannel(),
+		filterChan:     channel.NewFilterChannel(cfg.ChannelSize),
 		dispatcher:     channel.NewDispatcher(cfg.DispatchType),
 		forwardConns:   make(map[uint16]*net.UDPConn),
 		sourceUDPAddrs: make(map[string]*udpConnContext),
@@ -61,11 +61,9 @@ func (server *Server) Run() error {
 	log.Println("dialing to", server.cfg.RemoteAddr)
 
 	transport.EnableGRO(server.udpListener)
+	transport.EnableGSO(server.udpListener)
 
-	// err = server.enableGSO(server.udpListener)
-	// server.isGSOEnabled = err == nil
-
-	go server.forwardLoop(server.filterChan.GetOutChan())
+	go server.handleForward(server.filterChan.GetOutChan())
 
 	wg := sync.WaitGroup{}
 	wg.Add(3)
@@ -75,7 +73,7 @@ func (server *Server) Run() error {
 	}()
 	go func() {
 		defer wg.Done()
-		server.handleUDP()
+		server.handleUDPListener()
 	}()
 	if server.cfg.ReportInterval > 0 {
 		go func() {

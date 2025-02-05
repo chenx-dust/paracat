@@ -9,40 +9,35 @@ import (
 	"github.com/chenx-dust/paracat/transport"
 )
 
-func (server *Server) forwardLoop(ch <-chan []*packet.Packet) {
+func (server *Server) handleForward(ch <-chan []*packet.Packet) {
 	for packets := range ch {
+		connPacketsMap := make(map[uint16][][]byte)
 		for _, newPacket := range packets {
-			server.handleForward(newPacket)
+			_, ok := server.forwardConns[newPacket.ConnID]
+			if !ok {
+				conn, err := net.ListenUDP("udp", nil)
+				if err != nil {
+					log.Println("error dialing relay:", err)
+					continue
+				}
+				transport.EnableGRO(conn)
+				transport.EnableGSO(conn)
+				server.forwardConns[newPacket.ConnID] = conn
+				go server.handleReverse(conn, newPacket.ConnID)
+			}
+			connPacketsMap[newPacket.ConnID] = append(connPacketsMap[newPacket.ConnID], newPacket.Buffer)
 		}
-	}
-}
-
-func (server *Server) handleForward(newPacket *packet.Packet) (int, error) {
-	conn, ok := server.forwardConns[newPacket.ConnID]
-	var err error
-	if !ok {
-		conn, err = net.ListenUDP("udp", nil)
+		remoteAddr, err := net.ResolveUDPAddr("udp", server.cfg.RemoteAddr)
 		if err != nil {
-			log.Println("error dialing relay:", err)
-			return 0, err
+			log.Fatalln("error resolving remote addr:", err)
 		}
-		transport.EnableGRO(conn)
-		server.forwardConns[newPacket.ConnID] = conn
-		go server.handleReverse(conn, newPacket.ConnID)
+		for connID, packets := range connPacketsMap {
+			err := transport.SendUDPPackets(server.forwardConns[connID], remoteAddr, packets)
+			if err != nil {
+				log.Println("error writing to udp:", err)
+			}
+		}
 	}
-
-	remoteAddr, err := net.ResolveUDPAddr("udp", server.cfg.RemoteAddr)
-	if err != nil {
-		log.Fatalln("error resolving remote addr:", err)
-	}
-
-	n, err := conn.WriteToUDP(newPacket.Buffer, remoteAddr)
-	if err != nil {
-		log.Println("error writing to udp:", err)
-	} else if n != len(newPacket.Buffer) {
-		log.Println("error writing to udp: wrote", n, "bytes instead of", len(newPacket.Buffer))
-	}
-	return n, nil
 }
 
 func (server *Server) handleReverse(conn *net.UDPConn, connID uint16) {
@@ -51,7 +46,7 @@ func (server *Server) handleReverse(conn *net.UDPConn, connID uint16) {
 		log.Fatalln("error resolving remote addr:", err)
 	}
 	for {
-		packets, addr, err := transport.ReceiveUDPRawPackets(conn)
+		rawPackets, addr, err := transport.ReceiveUDPRawPackets(conn)
 		if err != nil {
 			log.Println("error receiving udp packets:", err)
 			continue
@@ -61,7 +56,8 @@ func (server *Server) handleReverse(conn *net.UDPConn, connID uint16) {
 			continue
 		}
 
-		for _, rawPacket := range packets {
+		packets := make([][]byte, 0, len(rawPackets))
+		for _, rawPacket := range rawPackets {
 			packetID := channel.NewPacketID(&server.idIncrement)
 			newPacket := &packet.Packet{
 				Buffer:   rawPacket,
@@ -69,8 +65,8 @@ func (server *Server) handleReverse(conn *net.UDPConn, connID uint16) {
 				PacketID: packetID,
 			}
 			packed := newPacket.Pack()
-
-			server.dispatcher.Dispatch(packed)
+			packets = append(packets, packed)
 		}
+		server.dispatcher.Dispatch(packets)
 	}
 }

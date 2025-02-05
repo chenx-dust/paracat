@@ -14,7 +14,7 @@ type JSONConfig struct {
 	RemoteAddr     string            `json:"remote_addr,omitempty"`
 	RelayServers   []JSONRelayServer `json:"relay_servers,omitempty"`
 	RelayType      *JSONRelayType    `json:"relay_type,omitempty"`
-	BufferSize     *int              `json:"buffer_size,omitempty"`
+	ChannelSize    *int              `json:"channel_size,omitempty"`
 	ReportInterval *string           `json:"report_interval,omitempty"`
 	ReconnectTimes *int              `json:"reconnect_times,omitempty"`
 	ReconnectDelay *string           `json:"reconnect_delay,omitempty"`
@@ -34,7 +34,7 @@ type JSONRelayType struct {
 }
 
 const defaultWeight = 1
-const defaultBufferSize = 65535
+const defaultChannelSize = 64
 const defaultReportInterval = 0 * time.Second
 const defaultReconnectTimes = 3
 const defaultReconnectDelay = 5 * time.Second
@@ -70,9 +70,9 @@ func convertJSONConfig(jc JSONConfig) (*Config, error) {
 		return nil, fmt.Errorf("invalid mode: %s", jc.Mode)
 	}
 
-	bufferSize := defaultBufferSize
-	if jc.BufferSize != nil {
-		bufferSize = *jc.BufferSize
+	channelSize := defaultChannelSize
+	if jc.ChannelSize != nil {
+		channelSize = *jc.ChannelSize
 	}
 
 	reportInterval := defaultReportInterval
@@ -112,7 +112,7 @@ func convertJSONConfig(jc JSONConfig) (*Config, error) {
 		ListenAddr:     jc.ListenAddr,
 		RemoteAddr:     jc.RemoteAddr,
 		RelayServers:   convertJSONRelayServers(jc.RelayServers),
-		BufferSize:     bufferSize,
+		ChannelSize:    channelSize,
 		ReportInterval: reportInterval,
 		ReconnectTimes: reconnectTimes,
 		ReconnectDelay: reconnectDelay,

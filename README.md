@@ -7,37 +7,52 @@ In crowded Internet, all connections are not reliable. To minimize jitter and pa
 ```mermaid
 flowchart LR
     C[UDP Client]
-    IN[Inbound]
-    OUT[Outbound]
-    R0(Relay Server #0)
-    R1(Relay Server #1)
-    Rn(Relay Server #n)
+    PC[Paracat Client]
+    D{Data}
+    PS[Paracat Server]
     S(UDP Server)
 
-    C -->|UDP| IN
+    C -->|"handleForward()"| PC
+    C <-->|MultiPort<->SinglePort| PC
+    PC -->|"handleReverse()"| C
 
-    IN -->|Raw TCP| R0
-    IN -->|Raw UDP| R0
-    IN -->|SOCKS5| R1
-    IN -->|Others| Rn
-    IN -->|Raw TCP| OUT
-    IN -->|Raw UDP| OUT
+    PC -->|"
+    SendUDPLoop()
+    SendTCPLoop()
+    Dispatcher
+    "| D
+    PC -->|MultiPort<->| D
+    D -->|"
+    handleUDPRelayRecv()
+    ReceiveTCPLoop()
+    Filter
+    "| PC
 
-    R0 --> OUT
-    R1 --> OUT
-    Rn --> OUT
+    D -->|"
+    handleUDPListener()
+    ReceiveTCPLoop()
+    Filter
+    "| PS
+    D -->|<->SinglePort| PS
+    PS -->|"
+    SendUDPLoop()
+    SendTCPLoop()
+    Dispatcher
+    "| D
 
-    OUT -->|UDP| S
+    PS -->|"handleForward()"| S
+    PS <-->|MultiPort<->SinglePort| S
+    S -->|"handleReverse()"| PS
 ```
 
 ## TODO
 
 - [X] Round-robin mode
 - [X] Remove unused UDP connections
+- [X] GRO & GSO
 - [ ] Optimize delay
 - [ ] Re-connect after EOF
 - [ ] Congestion control algorithm
 - [ ] Fake TCP with eBPF
-- [ ] GRO & GSO
-- [ ] UDP MTU discovery
+- [ ] UDP MTU discovery with DF
 - [ ] API interface

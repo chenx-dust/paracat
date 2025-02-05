@@ -9,9 +9,10 @@ import (
 )
 
 type tcpConnContext struct {
-	ctx     context.Context
-	cancel_ context.CancelFunc
-	conn    *net.TCPConn
+	ctx    context.Context
+	cancel context.CancelFunc
+	conn   *net.TCPConn
+	ch     chan<- [][]byte
 }
 
 func (ctx *tcpConnContext) Done() <-chan struct{} {
@@ -19,21 +20,25 @@ func (ctx *tcpConnContext) Done() <-chan struct{} {
 }
 
 func (ctx *tcpConnContext) Cancel() {
-	ctx.cancel_()
+	ctx.cancel()
 }
 
 func (server *Server) newTCPConnContext(conn *net.TCPConn) *tcpConnContext {
 	ctx, cancel := context.WithCancel(context.Background())
-	server.dispatcher.NewOutput(conn)
-	newCtx := &tcpConnContext{ctx, cancel, conn}
+	ch := make(chan [][]byte, server.cfg.ChannelSize)
+	server.dispatcher.NewOutput(ch)
+	newCtx := &tcpConnContext{ctx, cancel, conn, ch}
 	go server.handleTCPConnContextCancel(newCtx)
+	go transport.ReceiveTCPLoop(newCtx, conn, server.filterChan)
+	go transport.SendTCPLoop(newCtx, conn, ch)
 	return newCtx
 }
 
 func (server *Server) handleTCPConnContextCancel(ctx *tcpConnContext) {
 	<-ctx.ctx.Done()
+	log.Println("closing tcp connection:", ctx.conn.RemoteAddr().String())
 	ctx.conn.Close()
-	server.dispatcher.RemoveOutput(ctx.conn)
+	server.dispatcher.RemoveOutput(ctx.ch)
 }
 
 func (server *Server) handleTCP() {
@@ -42,12 +47,7 @@ func (server *Server) handleTCP() {
 		if err != nil {
 			log.Fatalln("error accepting tcp connection:", err)
 		}
-		server.handleTCPConn(conn)
+		log.Println("new tcp connection from", conn.RemoteAddr().String())
+		server.newTCPConnContext(conn)
 	}
-}
-
-func (server *Server) handleTCPConn(conn *net.TCPConn) {
-	log.Println("new tcp connection from", conn.RemoteAddr().String())
-	ctx := server.newTCPConnContext(conn)
-	go transport.TCPFowrardLoop(ctx, conn, server.filterChan)
 }

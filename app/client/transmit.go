@@ -1,7 +1,6 @@
 package client
 
 import (
-	"errors"
 	"log"
 
 	"github.com/chenx-dust/paracat/channel"
@@ -11,7 +10,7 @@ import (
 
 func (client *Client) handleForward() {
 	for {
-		packets, addr, err := transport.ReceiveUDPRawPackets(client.udpListener)
+		rawPackets, addr, err := transport.ReceiveUDPRawPackets(client.udpListener)
 		if err != nil {
 			log.Fatalln("error reading from udp conn:", err)
 		}
@@ -25,7 +24,8 @@ func (client *Client) handleForward() {
 			client.connMutex.Unlock()
 			log.Println("new connection from:", addr.String())
 		}
-		for _, rawPacket := range packets {
+		packets := make([][]byte, 0, len(rawPackets))
+		for _, rawPacket := range rawPackets {
 			packetID := channel.NewPacketID(&client.idIncrement)
 
 			newPacket := &packet.Packet{
@@ -34,32 +34,30 @@ func (client *Client) handleForward() {
 				PacketID: packetID,
 			}
 			packed := newPacket.Pack()
-			client.dispatcher.Dispatch(packed)
+			packets = append(packets, packed)
 		}
+		client.dispatcher.Dispatch(packets)
 	}
 }
 
-func (client *Client) reverseLoop(ch <-chan []*packet.Packet) {
+func (client *Client) handleReverse(ch <-chan []*packet.Packet) {
 	for packets := range ch {
+		connPacketsMap := make(map[uint16][][]byte)
+		client.connMutex.RLock()
 		for _, newPacket := range packets {
-			client.handleReverse(newPacket)
+			_, ok := client.connIDAddrMap[newPacket.ConnID]
+			if !ok {
+				log.Println("conn not found:", newPacket.ConnID)
+				continue
+			}
+			connPacketsMap[newPacket.ConnID] = append(connPacketsMap[newPacket.ConnID], newPacket.Buffer)
+		}
+		client.connMutex.RUnlock()
+		for connID, packets := range connPacketsMap {
+			err := transport.SendUDPPackets(client.udpListener, client.connIDAddrMap[connID], packets)
+			if err != nil {
+				log.Println("error writing to udp:", err)
+			}
 		}
 	}
-}
-
-func (client *Client) handleReverse(newPacket *packet.Packet) (n int, err error) {
-	client.connMutex.RLock()
-	udpAddr, ok := client.connIDAddrMap[newPacket.ConnID]
-	client.connMutex.RUnlock()
-	if !ok {
-		log.Println("conn not found")
-		return 0, errors.New("conn not found")
-	}
-	n, err = client.udpListener.WriteToUDP(newPacket.Buffer, udpAddr)
-	if err != nil {
-		log.Println("error writing to udp:", err)
-	} else if n != len(newPacket.Buffer) {
-		log.Println("error writing to udp: wrote", n, "bytes instead of", len(newPacket.Buffer))
-	}
-	return
 }

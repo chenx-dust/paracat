@@ -8,8 +8,6 @@ import (
 	"github.com/chenx-dust/paracat/packet"
 )
 
-const CHANNEL_BUFFER_SIZE = 64
-
 type FilterChannel struct {
 	// outCallback func(packet *packet.Packet) (int, error)
 	filter  *PacketFilter
@@ -19,10 +17,10 @@ type FilterChannel struct {
 	StatisticOut *packet.PacketStatistic
 }
 
-func NewFilterChannel() *FilterChannel {
+func NewFilterChannel(chanSize int) *FilterChannel {
 	return &FilterChannel{
 		filter:       NewPacketFilter(),
-		chanOut:      make(chan []*packet.Packet, CHANNEL_BUFFER_SIZE),
+		chanOut:      make(chan []*packet.Packet, chanSize),
 		StatisticIn:  packet.NewPacketStatistic(),
 		StatisticOut: packet.NewPacketStatistic(),
 	}

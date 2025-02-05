@@ -14,6 +14,7 @@ type tcpRelay struct {
 	cancel context.CancelFunc
 	addr   *net.TCPAddr
 	conn   *net.TCPConn
+	ch     chan [][]byte
 }
 
 func (relay *tcpRelay) Done() <-chan struct{} {
@@ -40,9 +41,11 @@ func (client *Client) connectTCPRelay(relay *tcpRelay) error {
 			continue
 		}
 		relay.ctx, relay.cancel = context.WithCancel(context.Background())
-		client.dispatcher.NewOutput(relay)
+		relay.ch = make(chan [][]byte, client.cfg.ChannelSize)
+		client.dispatcher.NewOutput(relay.ch)
 		go client.handleTCPRelayCancel(relay)
-		go transport.TCPFowrardLoop(relay, relay.conn, client.filterChan)
+		go transport.SendTCPLoop(relay, relay.conn, relay.ch)
+		go transport.ReceiveTCPLoop(relay, relay.conn, client.filterChan)
 		return nil
 	}
 	return err
@@ -50,22 +53,11 @@ func (client *Client) connectTCPRelay(relay *tcpRelay) error {
 
 func (client *Client) handleTCPRelayCancel(relay *tcpRelay) {
 	<-relay.ctx.Done()
+	log.Println("closing tcp relay:", relay.addr)
 	relay.conn.Close()
-	client.dispatcher.RemoveOutput(relay)
+	client.dispatcher.RemoveOutput(relay.ch)
 	err := client.connectTCPRelay(relay)
 	if err != nil {
 		log.Println("failed to reconnect tcp relay:", err)
 	}
-}
-
-func (relay *tcpRelay) Write(packet []byte) (n int, err error) {
-	n, err = relay.conn.Write(packet)
-	if err != nil {
-		log.Println("error writing packet:", err)
-		log.Println("stop handling connection to:", relay.conn.RemoteAddr().String())
-		relay.cancel()
-	} else if n != len(packet) {
-		log.Println("error writing packet: wrote", n, "bytes instead of", len(packet))
-	}
-	return
 }

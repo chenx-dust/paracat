@@ -43,6 +43,9 @@ func WritePacket(writer io.Writer, p *Packet) (n int, err error) {
 }
 
 func Unpack(buffer []byte) (packet *Packet, err error) {
+	if len(buffer) < 7 {
+		return nil, errors.New("invalid packet")
+	}
 	if buffer[0] != MAGIC_NUMBER {
 		return nil, errors.New("invalid magic number")
 	}
