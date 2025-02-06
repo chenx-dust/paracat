@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/chenx-dust/paracat/buffer"
 	"github.com/chenx-dust/paracat/transport"
 )
 
@@ -15,7 +16,7 @@ type udpConnContext struct {
 	addr   *net.UDPAddr
 	timer  *time.Timer
 	conn   *net.UDPConn
-	ch     chan [][]byte
+	ch     chan buffer.ArgPtr[*buffer.PackedBuffer]
 }
 
 func (ctx *udpConnContext) Done() <-chan struct{} {
@@ -34,9 +35,9 @@ func (server *Server) newUDPConnContext(addr *net.UDPAddr) *udpConnContext {
 		addr:   addr,
 		timer:  time.NewTimer(server.cfg.UDPTimeout),
 		conn:   server.udpListener,
-		ch:     make(chan [][]byte, server.cfg.ChannelSize),
+		ch:     make(chan buffer.ArgPtr[*buffer.PackedBuffer], server.cfg.ChannelSize),
 	}
-	server.dispatcher.NewOutput(newCtx.ch)
+	server.scatterer.NewOutput(newCtx.ch)
 	newCtx.conn = server.udpListener
 	go server.handleUDPConnContextCancel(newCtx)
 	go server.handleUDPConnTimeout(newCtx)
@@ -51,7 +52,7 @@ func (server *Server) handleUDPConnContextCancel(ctx *udpConnContext) {
 	<-ctx.ctx.Done()
 	log.Println("closing udp connection:", ctx.addr.String())
 	ctx.timer.Stop()
-	server.dispatcher.RemoveOutput(ctx.ch)
+	server.scatterer.RemoveOutput(ctx.ch)
 	server.sourceMutex.Lock()
 	delete(server.sourceUDPAddrs, ctx.addr.String())
 	server.sourceMutex.Unlock()
@@ -61,11 +62,12 @@ func (server *Server) handleUDPListener() {
 	for {
 		packets, udpAddr, err := transport.ReceiveUDPPackets(server.udpListener)
 		if err != nil {
+			packets.Release()
 			continue
 		}
 
 		server.handleUDPAddr(udpAddr)
-		server.filterChan.Forward(packets)
+		server.gatherer.Forward(packets.MoveArg())
 	}
 }
 

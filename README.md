@@ -19,25 +19,25 @@ flowchart LR
     PC -->|"
     SendUDPLoop()
     SendTCPLoop()
-    Dispatcher
+    Scatterer
     "| D
     PC -->|MultiPort<->| D
     D -->|"
     handleUDPRelayRecv()
     ReceiveTCPLoop()
-    Filter
+    Gather
     "| PC
 
     D -->|"
     handleUDPListener()
     ReceiveTCPLoop()
-    Filter
+    Gather
     "| PS
     D -->|<->SinglePort| PS
     PS -->|"
     SendUDPLoop()
     SendTCPLoop()
-    Dispatcher
+    Scatterer
     "| D
 
     PS -->|"handleForward()"| S

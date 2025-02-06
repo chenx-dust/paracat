@@ -15,8 +15,8 @@ import (
 type Client struct {
 	cfg *config.Config
 
-	filterChan  *channel.FilterChannel
-	dispatcher  *channel.Dispatcher
+	gatherer    *channel.Gatherer
+	scatterer   *channel.Scatterer
 	idIncrement atomic.Uint32
 
 	udpListener *net.UDPConn
@@ -30,8 +30,8 @@ type Client struct {
 func NewClient(cfg *config.Config) *Client {
 	return &Client{
 		cfg:           cfg,
-		filterChan:    channel.NewFilterChannel(cfg.ChannelSize),
-		dispatcher:    channel.NewDispatcher(cfg.DispatchType),
+		gatherer:      channel.NewGatherer(cfg.ChannelSize),
+		scatterer:     channel.NewScatterer(cfg.ScatterType),
 		connIDAddrMap: make(map[uint16]*net.UDPAddr),
 		connAddrIDMap: make(map[string]uint16),
 	}
@@ -54,7 +54,7 @@ func (client *Client) Run() error {
 
 	log.Println("listening on", client.cfg.ListenAddr)
 
-	go client.handleReverse(client.filterChan.GetOutChan())
+	go client.handleReverse(client.gatherer.GetOutChan())
 
 	client.dialRelays()
 
@@ -70,14 +70,20 @@ func (client *Client) Run() error {
 			ticker := time.NewTicker(client.cfg.ReportInterval)
 			defer ticker.Stop()
 			for range ticker.C {
-				pkg, band := client.dispatcher.StatisticIn.GetAndReset()
-				log.Printf("dispatcher in: %d packets, %d bytes in %s, %.2f MB/s", pkg, band, client.cfg.ReportInterval, float64(band)/client.cfg.ReportInterval.Seconds()/1024/1024)
-				pkg, band = client.dispatcher.StatisticOut.GetAndReset()
-				log.Printf("dispatcher out: %d packets, %d bytes in %s, %.2f MB/s", pkg, band, client.cfg.ReportInterval, float64(band)/client.cfg.ReportInterval.Seconds()/1024/1024)
-				pkg, band = client.filterChan.StatisticIn.GetAndReset()
-				log.Printf("filter in: %d packets, %d bytes in %s, %.2f MB/s", pkg, band, client.cfg.ReportInterval, float64(band)/client.cfg.ReportInterval.Seconds()/1024/1024)
-				pkg, band = client.filterChan.StatisticOut.GetAndReset()
-				log.Printf("filter out: %d packets, %d bytes in %s, %.2f MB/s", pkg, band, client.cfg.ReportInterval, float64(band)/client.cfg.ReportInterval.Seconds()/1024/1024)
+				pkg, band := client.scatterer.StatisticIn.GetAndReset()
+				log.Printf("scatter in: %d packets, %d bytes in %s, %.2f MB/s", pkg, band, client.cfg.ReportInterval, float64(band)/client.cfg.ReportInterval.Seconds()/1024/1024)
+				pkg, band = client.scatterer.StatisticOut.GetAndReset()
+				log.Printf("scatter out: %d packets, %d bytes in %s, %.2f MB/s", pkg, band, client.cfg.ReportInterval, float64(band)/client.cfg.ReportInterval.Seconds()/1024/1024)
+				pkg, band = client.gatherer.StatisticIn.GetAndReset()
+				log.Printf("gather in: %d packets, %d bytes in %s, %.2f MB/s", pkg, band, client.cfg.ReportInterval, float64(band)/client.cfg.ReportInterval.Seconds()/1024/1024)
+				pkg, band = client.gatherer.StatisticOut.GetAndReset()
+				log.Printf("gather out: %d packets, %d bytes in %s, %.2f MB/s", pkg, band, client.cfg.ReportInterval, float64(band)/client.cfg.ReportInterval.Seconds()/1024/1024)
+
+				// buffer.BufferTraceBack.Lock()
+				// for k, v := range buffer.BufferTraceBack.TraceBack {
+				// 	log.Printf("buffer trace back: %s, %d", k, v)
+				// }
+				// buffer.BufferTraceBack.Unlock()
 			}
 		}()
 	}

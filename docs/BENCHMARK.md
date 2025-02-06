@@ -10,13 +10,13 @@
 
 - 768.62 Mbps Bidirectional Transfer
 
-## With Post-Filter Channel
+## With Post-Gather Channel
 
 - 1056.92 Mbps Bidirectional Transfer
 - 1839.68 Mbps Forward Transfer
 - 1784.70 Mbps Reverse Transfer
 
-## With Double Channel Filter
+## With Double Channel Gather
 
 - 1016.88 Mbps Bidirectional Transfer
 - 1709.00 Mbps Forward Transfer
@@ -39,3 +39,27 @@
 - 1968.95 Mbps Bidirectional Transfer
 - 5227.55 Mbps Forward Transfer
 - 5544.14 Mbps Reverse Transfer
+
+## With GRO & GSO (after Optimized)
+
+- 4069.50 Mbps Bidirectional Transfer
+- 13447.39 Mbps Forward Transfer
+- 10025.05 Mbps Reverse Transfer
+
+## With GRO & GSO (with smart pointer & buffer pool)
+
+- 8874.25 Mbps Bidirectional Transfer
+- 35520.84 Mbps Forward Transfer
+- 41044.26 Mbps Reverse Transfer
+
+## Original TCP
+
+- 6979.40 Mbps Bidirectional Transfer
+- 12442.19 Mbps Forward Transfer
+- 13009.04 Mbps Reverse Transfer
+
+## With large buffer reader TCP
+
+- 677.77 Mbps Bidirectional Transfer (?)
+- 15459.34 Mbps Forward Transfer
+- 16360.45 Mbps Reverse Transfer

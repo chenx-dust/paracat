@@ -4,7 +4,7 @@ import "time"
 
 type AppMode int
 type ConnectionType int
-type DispatchType int
+type ScatterType int
 
 const (
 	NotDefined AppMode = iota
@@ -21,9 +21,9 @@ const (
 )
 
 const (
-	NotDefinedDispatchType DispatchType = iota
-	RoundRobinDispatchType
-	ConcurrentDispatchType
+	NotDefinedScatterType ScatterType = iota
+	RoundRobinScatterType
+	ConcurrentScatterType
 )
 
 type Config struct {
@@ -34,10 +34,9 @@ type Config struct {
 	RelayType      RelayType     // only used in RelayMode
 	ChannelSize    int
 	ReportInterval time.Duration
-	ReconnectTimes int           // only used in ClientMode
 	ReconnectDelay time.Duration // only used in ClientMode
 	UDPTimeout     time.Duration // only used in ServerMode
-	DispatchType   DispatchType
+	ScatterType    ScatterType
 }
 
 type RelayServer struct {
@@ -64,11 +63,11 @@ func ConnTypeToString(connType ConnectionType) string {
 	}
 }
 
-func DispatchTypeToString(dispatchType DispatchType) string {
-	switch dispatchType {
-	case RoundRobinDispatchType:
+func ScatterTypeToString(scatterType ScatterType) string {
+	switch scatterType {
+	case RoundRobinScatterType:
 		return "round-robin"
-	case ConcurrentDispatchType:
+	case ConcurrentScatterType:
 		return "concurrent"
 	default:
 		return "unknown"

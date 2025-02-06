@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/chenx-dust/paracat/config"
+	"github.com/chenx-dust/paracat/transport"
 )
 
 type Relay struct {
@@ -58,6 +59,8 @@ func (relay *Relay) Run() error {
 		if err != nil {
 			return err
 		}
+		transport.EnableGRO(relay.udpListener)
+		transport.EnableGSO(relay.udpListener)
 		log.Println("listening on", relay.cfg.ListenAddr)
 	}
 
@@ -87,6 +90,8 @@ func (relay *Relay) Run() error {
 		if err != nil {
 			return err
 		}
+		transport.EnableGRO(relay.udpDialer)
+		transport.EnableGSO(relay.udpDialer)
 		log.Println("forwarding udp to", relay.cfg.RemoteAddr)
 	}
 

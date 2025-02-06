@@ -1,42 +1,44 @@
-/* FilterChannel is a channel with duplicate packet filter. For MISO usage. */
+/* Gatherer is a channel with duplicate packet gather. For MISO usage. */
 package channel
 
 import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/chenx-dust/paracat/buffer"
 	"github.com/chenx-dust/paracat/packet"
 )
 
-type FilterChannel struct {
+type Gatherer struct {
 	// outCallback func(packet *packet.Packet) (int, error)
-	filter  *PacketFilter
-	chanOut chan []*packet.Packet
+	gather  *PacketFilter
+	chanOut chan buffer.WithBufferArg[[]*packet.Packet]
 
 	StatisticIn  *packet.PacketStatistic
 	StatisticOut *packet.PacketStatistic
 }
 
-func NewFilterChannel(chanSize int) *FilterChannel {
-	return &FilterChannel{
-		filter:       NewPacketFilter(),
-		chanOut:      make(chan []*packet.Packet, chanSize),
+func NewGatherer(chanSize int) *Gatherer {
+	return &Gatherer{
+		gather:       NewPacketGather(),
+		chanOut:      make(chan buffer.WithBufferArg[[]*packet.Packet], chanSize),
 		StatisticIn:  packet.NewPacketStatistic(),
 		StatisticOut: packet.NewPacketStatistic(),
 	}
 }
 
-func (ch *FilterChannel) GetOutChan() <-chan []*packet.Packet {
+func (ch *Gatherer) GetOutChan() <-chan buffer.WithBufferArg[[]*packet.Packet] {
 	return ch.chanOut
 }
 
-func (ch *FilterChannel) Forward(newPackets []*packet.Packet) {
+func (ch *Gatherer) Forward(newPackets_ buffer.WithBufferArg[[]*packet.Packet]) {
+	newPackets := newPackets_.ToOwned()
 	inSize := 0
 	outSize := 0
-	fwdPackets := make([]*packet.Packet, 0, len(newPackets))
-	for _, newPacket := range newPackets {
+	fwdPackets := make([]*packet.Packet, 0, len(newPackets.Thing))
+	for _, newPacket := range newPackets.Thing {
 		inSize += len(newPacket.Buffer)
-		if ch.filter.CheckDuplicatePacketID(newPacket.PacketID) {
+		if ch.gather.CheckDuplicatePacketID(newPacket.PacketID) {
 			continue
 		}
 		outSize += len(newPacket.Buffer)
@@ -44,7 +46,15 @@ func (ch *FilterChannel) Forward(newPackets []*packet.Packet) {
 	}
 	ch.StatisticIn.CountPacket(uint32(inSize))
 	ch.StatisticOut.CountPacket(uint32(outSize))
-	ch.chanOut <- fwdPackets
+	data := buffer.WithBuffer[[]*packet.Packet]{
+		Thing:  fwdPackets,
+		Buffer: newPackets.Buffer.Move(),
+	}
+	select {
+	case ch.chanOut <- data.MoveArg():
+	default:
+		data.Release()
+	}
 }
 
 type PacketFilter struct {
@@ -55,7 +65,7 @@ type PacketFilter struct {
 	packetHighClear bool
 }
 
-func NewPacketFilter() *PacketFilter {
+func NewPacketGather() *PacketFilter {
 	return &PacketFilter{
 		packetLowMap:    [0x8000]bool{},
 		packetLowClear:  true,

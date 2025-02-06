@@ -16,10 +16,9 @@ type JSONConfig struct {
 	RelayType      *JSONRelayType    `json:"relay_type,omitempty"`
 	ChannelSize    *int              `json:"channel_size,omitempty"`
 	ReportInterval *string           `json:"report_interval,omitempty"`
-	ReconnectTimes *int              `json:"reconnect_times,omitempty"`
 	ReconnectDelay *string           `json:"reconnect_delay,omitempty"`
 	UDPTimeout     *string           `json:"udp_timeout,omitempty"`
-	DispatchType   *string           `json:"dispatch_type,omitempty"`
+	ScatterType    *string           `json:"scatter_type,omitempty"`
 }
 
 type JSONRelayServer struct {
@@ -36,7 +35,6 @@ type JSONRelayType struct {
 const defaultWeight = 1
 const defaultChannelSize = 64
 const defaultReportInterval = 0 * time.Second
-const defaultReconnectTimes = 3
 const defaultReconnectDelay = 5 * time.Second
 const defaultUDPTimeout = 10 * time.Minute
 
@@ -84,11 +82,6 @@ func convertJSONConfig(jc JSONConfig) (*Config, error) {
 		reportInterval = d
 	}
 
-	reconnectTimes := defaultReconnectTimes
-	if jc.ReconnectTimes != nil {
-		reconnectTimes = *jc.ReconnectTimes
-	}
-
 	reconnectDelay := defaultReconnectDelay
 	if jc.ReconnectDelay != nil {
 		d, err := time.ParseDuration(*jc.ReconnectDelay)
@@ -114,9 +107,8 @@ func convertJSONConfig(jc JSONConfig) (*Config, error) {
 		RelayServers:   convertJSONRelayServers(jc.RelayServers),
 		ChannelSize:    channelSize,
 		ReportInterval: reportInterval,
-		ReconnectTimes: reconnectTimes,
 		ReconnectDelay: reconnectDelay,
-		DispatchType:   convertJSONDispatchType(jc.DispatchType),
+		ScatterType:    convertJSONScatterType(jc.ScatterType),
 		UDPTimeout:     udpTimeout,
 	}
 
@@ -163,16 +155,16 @@ func convertJSONConnectionType(connType string) ConnectionType {
 	}
 }
 
-func convertJSONDispatchType(dispatchType *string) DispatchType {
-	if dispatchType == nil {
-		return NotDefinedDispatchType
+func convertJSONScatterType(scatterType *string) ScatterType {
+	if scatterType == nil {
+		return NotDefinedScatterType
 	}
-	switch *dispatchType {
+	switch *scatterType {
 	case "round-robin":
-		return RoundRobinDispatchType
+		return RoundRobinScatterType
 	case "concurrent":
-		return ConcurrentDispatchType
+		return ConcurrentScatterType
 	default:
-		return NotDefinedDispatchType
+		return NotDefinedScatterType
 	}
 }

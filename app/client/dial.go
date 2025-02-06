@@ -13,11 +13,7 @@ func (client *Client) dialTCPRelay(addr string) error {
 		log.Println("error resolving tcp addr:", err)
 		return err
 	}
-	_, err = client.newTCPRelay(tcpAddr)
-	if err != nil {
-		log.Println("error dialing tcp relay:", err)
-		return err
-	}
+	client.newTCPRelay(tcpAddr)
 	log.Println("connected to tcp relay", addr)
 	return nil
 }
@@ -28,11 +24,7 @@ func (client *Client) dialUDPRelay(addr string) error {
 		log.Println("error resolving udp addr:", err)
 		return err
 	}
-	_, err = client.newUDPRelay(udpAddr)
-	if err != nil {
-		log.Println("error dialing udp relay:", err)
-		return err
-	}
+	client.newUDPRelay(udpAddr)
 	log.Println("connected to udp relay", addr)
 	return nil
 }

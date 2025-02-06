@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 
+	"github.com/chenx-dust/paracat/buffer"
 	"github.com/chenx-dust/paracat/transport"
 )
 
@@ -12,7 +13,7 @@ type tcpConnContext struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	conn   *net.TCPConn
-	ch     chan<- [][]byte
+	ch     chan<- buffer.ArgPtr[*buffer.PackedBuffer]
 }
 
 func (ctx *tcpConnContext) Done() <-chan struct{} {
@@ -25,11 +26,11 @@ func (ctx *tcpConnContext) Cancel() {
 
 func (server *Server) newTCPConnContext(conn *net.TCPConn) *tcpConnContext {
 	ctx, cancel := context.WithCancel(context.Background())
-	ch := make(chan [][]byte, server.cfg.ChannelSize)
-	server.dispatcher.NewOutput(ch)
+	ch := make(chan buffer.ArgPtr[*buffer.PackedBuffer], server.cfg.ChannelSize)
+	server.scatterer.NewOutput(ch)
 	newCtx := &tcpConnContext{ctx, cancel, conn, ch}
 	go server.handleTCPConnContextCancel(newCtx)
-	go transport.ReceiveTCPLoop(newCtx, conn, server.filterChan)
+	go transport.ReceiveTCPLoop(newCtx, conn, server.gatherer)
 	go transport.SendTCPLoop(newCtx, conn, ch)
 	return newCtx
 }
@@ -38,7 +39,7 @@ func (server *Server) handleTCPConnContextCancel(ctx *tcpConnContext) {
 	<-ctx.ctx.Done()
 	log.Println("closing tcp connection:", ctx.conn.RemoteAddr().String())
 	ctx.conn.Close()
-	server.dispatcher.RemoveOutput(ctx.ch)
+	server.scatterer.RemoveOutput(ctx.ch)
 }
 
 func (server *Server) handleTCP() {

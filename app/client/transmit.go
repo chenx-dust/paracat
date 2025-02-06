@@ -3,6 +3,7 @@ package client
 import (
 	"log"
 
+	"github.com/chenx-dust/paracat/buffer"
 	"github.com/chenx-dust/paracat/channel"
 	"github.com/chenx-dust/paracat/packet"
 	"github.com/chenx-dust/paracat/transport"
@@ -24,27 +25,33 @@ func (client *Client) handleForward() {
 			client.connMutex.Unlock()
 			log.Println("new connection from:", addr.String())
 		}
-		packets := make([][]byte, 0, len(rawPackets))
-		for _, rawPacket := range rawPackets {
+		packets := buffer.NewPackedBuffer()
+		nowPtr := 0
+		for _, slice := range rawPackets.Ptr.SubPackets {
 			packetID := channel.NewPacketID(&client.idIncrement)
 
 			newPacket := &packet.Packet{
-				Buffer:   rawPacket,
+				Buffer:   rawPackets.Ptr.Buffer[nowPtr : nowPtr+slice],
 				ConnID:   connID,
 				PacketID: packetID,
 			}
-			packed := newPacket.Pack()
-			packets = append(packets, packed)
+			size := newPacket.PackInPlace(packets.Ptr.Buffer[nowPtr:])
+			packets.Ptr.SubPackets = append(packets.Ptr.SubPackets, size)
+			packets.Ptr.TotalSize += size
+
+			nowPtr += slice
 		}
-		client.dispatcher.Dispatch(packets)
+		rawPackets.Release()
+		client.scatterer.Scatter(packets.MoveArg())
 	}
 }
 
-func (client *Client) handleReverse(ch <-chan []*packet.Packet) {
-	for packets := range ch {
+func (client *Client) handleReverse(ch <-chan buffer.WithBufferArg[[]*packet.Packet]) {
+	for packets_ := range ch {
+		packets := packets_.ToOwned()
 		connPacketsMap := make(map[uint16][][]byte)
 		client.connMutex.RLock()
-		for _, newPacket := range packets {
+		for _, newPacket := range packets.Thing {
 			_, ok := client.connIDAddrMap[newPacket.ConnID]
 			if !ok {
 				log.Println("conn not found:", newPacket.ConnID)
@@ -54,10 +61,20 @@ func (client *Client) handleReverse(ch <-chan []*packet.Packet) {
 		}
 		client.connMutex.RUnlock()
 		for connID, packets := range connPacketsMap {
-			err := transport.SendUDPPackets(client.udpListener, client.connIDAddrMap[connID], packets)
+			pBuffer := buffer.NewPackedBuffer()
+			nowPtr := 0
+			for _, packet := range packets {
+				pBuffer.Ptr.SubPackets = append(pBuffer.Ptr.SubPackets, len(packet))
+				copy(pBuffer.Ptr.Buffer[nowPtr:], packet)
+				nowPtr += len(packet)
+			}
+			pBuffer.Ptr.TotalSize = nowPtr
+			err := transport.SendUDPPackets(client.udpListener, client.connIDAddrMap[connID], pBuffer.BorrowArg())
+			pBuffer.Release()
 			if err != nil {
 				log.Println("error writing to udp:", err)
 			}
 		}
+		packets.Release()
 	}
 }

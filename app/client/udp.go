@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/chenx-dust/paracat/buffer"
 	"github.com/chenx-dust/paracat/transport"
 )
 
@@ -14,7 +15,7 @@ type udpRelay struct {
 	cancel context.CancelFunc
 	addr   *net.UDPAddr
 	conn   *net.UDPConn
-	ch     chan [][]byte
+	ch     chan buffer.ArgPtr[*buffer.PackedBuffer]
 }
 
 func (relay *udpRelay) Done() <-chan struct{} {
@@ -25,44 +26,41 @@ func (relay *udpRelay) Cancel() {
 	relay.cancel()
 }
 
-func (client *Client) newUDPRelay(addr *net.UDPAddr) (relay *udpRelay, err error) {
+func (client *Client) newUDPRelay(addr *net.UDPAddr) (relay *udpRelay) {
 	relay = &udpRelay{addr: addr}
-	err = client.connectUDPRelay(relay)
+	client.connectUDPRelay(relay)
 	return
 }
 
-func (client *Client) connectUDPRelay(relay *udpRelay) error {
+func (client *Client) connectUDPRelay(relay *udpRelay) {
 	var err error
-	for retry := 0; retry < client.cfg.ReconnectTimes; retry++ {
+	retry := 0
+	for {
 		relay.conn, err = net.ListenUDP("udp", nil)
-		if err != nil {
-			log.Println("error dialing udp:", err, "retry:", retry)
-			time.Sleep(client.cfg.ReconnectDelay)
-			continue
+		if err == nil {
+			break
 		}
-		transport.EnableGRO(relay.conn)
-		transport.EnableGSO(relay.conn)
-
-		relay.ctx, relay.cancel = context.WithCancel(context.Background())
-		relay.ch = make(chan [][]byte, client.cfg.ChannelSize)
-		client.dispatcher.NewOutput(relay.ch)
-		go client.handleUDPRelayCancel(relay)
-		go client.handleUDPRelayRecv(relay)
-		go transport.SendUDPLoop(relay, relay.conn, relay.addr, relay.ch)
-		return nil
+		log.Println("error dialing udp:", err, "retry:", retry)
+		time.Sleep(client.cfg.ReconnectDelay)
+		retry++
 	}
-	return err
+	transport.EnableGRO(relay.conn)
+	transport.EnableGSO(relay.conn)
+
+	relay.ctx, relay.cancel = context.WithCancel(context.Background())
+	relay.ch = make(chan buffer.ArgPtr[*buffer.PackedBuffer], client.cfg.ChannelSize)
+	client.scatterer.NewOutput(relay.ch)
+	go client.handleUDPRelayCancel(relay)
+	go client.handleUDPRelayRecv(relay)
+	go transport.SendUDPLoop(relay, relay.conn, relay.addr, relay.ch)
 }
 
 func (client *Client) handleUDPRelayCancel(relay *udpRelay) {
 	<-relay.ctx.Done()
 	log.Println("closing udp relay:", relay.addr)
 	relay.conn.Close()
-	client.dispatcher.RemoveOutput(relay.ch)
-	err := client.connectUDPRelay(relay)
-	if err != nil {
-		log.Println("failed to reconnect udp relay:", err)
-	}
+	client.scatterer.RemoveOutput(relay.ch)
+	client.connectUDPRelay(relay)
 }
 
 func (client *Client) handleUDPRelayRecv(relay *udpRelay) {
@@ -75,12 +73,14 @@ func (client *Client) handleUDPRelayRecv(relay *udpRelay) {
 		}
 		packets, addr, err := transport.ReceiveUDPPackets(relay.conn)
 		if err != nil {
+			packets.Release()
 			continue
 		}
 		if addr.String() != relay.addr.String() {
+			packets.Release()
 			log.Println("error receiving udp packets: addr mismatch", addr, relay.addr)
 			continue
 		}
-		client.filterChan.Forward(packets)
+		client.gatherer.Forward(packets.MoveArg())
 	}
 }

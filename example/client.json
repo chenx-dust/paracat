@@ -5,6 +5,6 @@
         {"addr": "[::1]:9001", "conn_type": "both"}
     ],
     "report_interval": "10s",
-    "dispatch_type": "concurrent",
+    "scatter_type": "concurrent",
     "udp_timeout": "10m"
 }
