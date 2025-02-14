@@ -80,7 +80,7 @@ func (server *Server) handleReverse(conn *net.UDPConn, connID uint16) {
 				ConnID:   connID,
 				PacketID: packetID,
 			}
-			size := newPacket.PackInPlace(packets.Ptr.Buffer[nowPtr:])
+			size := newPacket.Pack(packets.Ptr.Buffer[nowPtr:])
 			packets.Ptr.SubPackets = append(packets.Ptr.SubPackets, size)
 			packets.Ptr.TotalSize += size
 

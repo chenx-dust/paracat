@@ -63,3 +63,9 @@
 - 677.77 Mbps Bidirectional Transfer (?)
 - 15459.34 Mbps Forward Transfer
 - 16360.45 Mbps Reverse Transfer
+
+## Optimized TCP
+
+- 1110.90 Mbps Bidirectional Transfer (high variance)
+- 24471.42 Mbps Forward Transfer
+- 23794.73 Mbps Reverse Transfer

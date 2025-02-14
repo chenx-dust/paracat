@@ -85,11 +85,6 @@ func send(conn *net.UDPConn, target string, packetSize int, batchSize int) {
 		panic(err)
 	}
 
-	err = conn.SetWriteBuffer(packetSize * batchSize)
-	if err != nil {
-		panic(err)
-	}
-
 	buffer := make([]byte, packetSize*batchSize)
 	oob := make([]byte, unix.CmsgSpace(2))
 
@@ -136,8 +131,6 @@ func receive(conn *net.UDPConn, assumePacketSize int, assumeBatchSize int) {
 	if err != nil {
 		panic(err)
 	}
-
-	conn.SetReadBuffer(assumePacketSize * assumeBatchSize)
 
 	var byteCount uint64
 	buffer := make([]byte, 65535) // 64KB receive buffer

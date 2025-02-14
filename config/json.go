@@ -22,9 +22,10 @@ type JSONConfig struct {
 }
 
 type JSONRelayServer struct {
-	Addr     string `json:"addr"`
-	ConnType string `json:"conn_type"`
-	Weight   *int   `json:"weight,omitempty"`
+	Addr     string  `json:"addr"`
+	ConnType string  `json:"conn_type"`
+	Weight   *int    `json:"weight,omitempty"`
+	Traffic  *string `json:"traffic,omitempty"`
 }
 
 type JSONRelayType struct {
@@ -130,6 +131,7 @@ func convertJSONRelayServers(jsrs []JSONRelayServer) []RelayServer {
 			Address:  jsr.Addr,
 			ConnType: convertJSONConnectionType(jsr.ConnType),
 			Weight:   weight,
+			Traffic:  convertJSONTrafficType(jsr.Traffic),
 		}
 	}
 	return rs
@@ -166,5 +168,19 @@ func convertJSONScatterType(scatterType *string) ScatterType {
 		return ConcurrentScatterType
 	default:
 		return NotDefinedScatterType
+	}
+}
+
+func convertJSONTrafficType(trafficType *string) TrafficType {
+	if trafficType == nil {
+		return BothTrafficType
+	}
+	switch *trafficType {
+	case "up":
+		return UpTrafficType
+	case "down":
+		return DownTrafficType
+	default:
+		return BothTrafficType
 	}
 }

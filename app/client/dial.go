@@ -31,18 +31,16 @@ func (client *Client) dialUDPRelay(addr string) error {
 
 func (client *Client) dialRelays() {
 	for _, relay := range client.cfg.RelayServers {
-		for i := 0; i < relay.Weight; i++ {
-			if relay.ConnType == config.NotDefinedConnectionType {
-				log.Fatalln("not defined connection type")
-			}
-			enableTCP := relay.ConnType&config.TCPConnectionType != 0
-			enableUDP := relay.ConnType&config.UDPConnectionType != 0
-			if enableTCP {
-				client.dialTCPRelay(relay.Address)
-			}
-			if enableUDP {
-				client.dialUDPRelay(relay.Address)
-			}
+		if relay.ConnType == config.NotDefinedConnectionType {
+			log.Fatalln("not defined connection type")
+		}
+		enableTCP := relay.ConnType&config.TCPConnectionType != 0
+		enableUDP := relay.ConnType&config.UDPConnectionType != 0
+		if enableTCP {
+			client.dialTCPRelay(relay.Address)
+		}
+		if enableUDP {
+			client.dialUDPRelay(relay.Address)
 		}
 	}
 }

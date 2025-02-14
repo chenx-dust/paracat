@@ -21,7 +21,7 @@ flowchart LR
     SendTCPLoop()
     Scatterer
     "| D
-    PC -->|MultiPort<->| D
+    PC <-->|MultiPort<->| D
     D -->|"
     handleUDPRelayRecv()
     ReceiveTCPLoop()
@@ -33,7 +33,7 @@ flowchart LR
     ReceiveTCPLoop()
     Gather
     "| PS
-    D -->|<->SinglePort| PS
+    D <-->|<->SinglePort| PS
     PS -->|"
     SendUDPLoop()
     SendTCPLoop()
@@ -43,16 +43,27 @@ flowchart LR
     PS -->|"handleForward()"| S
     PS <-->|MultiPort<->SinglePort| S
     S -->|"handleReverse()"| PS
+
+    subgraph TCP/UDP Tunnel
+        D
+    end
 ```
 
 ## TODO
 
 - [X] Round-robin mode
 - [X] Remove unused UDP connections
+- [X] Re-connect after EOF
 - [X] GRO & GSO
+- [ ] Single direction for connection
+- [X] CRC check
+- [ ] New udp socket for each connection
+- [ ] UDP MTU discovery with DF
+- [ ] Routing strategy
+- [ ] API interface
+- [ ] Heartbeat keepalive
 - [ ] Optimize delay
-- [ ] Re-connect after EOF
 - [ ] Congestion control algorithm
 - [ ] Fake TCP with eBPF
-- [ ] UDP MTU discovery with DF
-- [ ] API interface
+- [ ] Test coverage
+- [ ] Multi-user support

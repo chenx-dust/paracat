@@ -1,8 +1,10 @@
 package packet
 
 import (
+	"bytes"
 	"errors"
-	"io"
+
+	"github.com/sigurn/crc8"
 )
 
 type Packet struct {
@@ -14,28 +16,16 @@ type Packet struct {
 var (
 	ErrPacketTooShort     = errors.New("packet too short")
 	ErrInvalidMagicNumber = errors.New("invalid magic number")
+	ErrInvalidCRC         = errors.New("invalid crc")
+	table                 = crc8.MakeTable(crc8.CRC8_MAXIM)
 )
 
 const (
-	MAGIC_NUMBER    = 0xa1
-	MAX_PACKET_SIZE = 1500
+	MAGIC_NUMBER = 0xa1
+	HEADER_SIZE  = 8
 )
 
-func (p *Packet) Pack() []byte {
-	packed := make([]byte, 0, 7+len(p.Buffer))
-	packed = append(packed, MAGIC_NUMBER)
-	packed = append(packed, byte(len(p.Buffer)))
-	packed = append(packed, byte(len(p.Buffer)>>8))
-	packed = append(packed, byte(p.ConnID))
-	packed = append(packed, byte(p.ConnID>>8))
-	packed = append(packed, byte(p.PacketID))
-	packed = append(packed, byte(p.PacketID>>8))
-	packed = append(packed, p.Buffer...)
-
-	return packed
-}
-
-func (p *Packet) PackInPlace(buffer []byte) (length int) {
+func (p *Packet) Pack(buffer []byte) (length int) {
 	buffer[0] = MAGIC_NUMBER
 	buffer[1] = byte(len(p.Buffer))
 	buffer[2] = byte(len(p.Buffer) >> 8)
@@ -43,93 +33,64 @@ func (p *Packet) PackInPlace(buffer []byte) (length int) {
 	buffer[4] = byte(p.ConnID >> 8)
 	buffer[5] = byte(p.PacketID)
 	buffer[6] = byte(p.PacketID >> 8)
-	copy(buffer[7:], p.Buffer)
-	return 7 + len(p.Buffer)
+	crc := crc8.Checksum(buffer[:7], table)
+	buffer[7] = crc
+	copy(buffer[HEADER_SIZE:], p.Buffer)
+	return HEADER_SIZE + len(p.Buffer)
 }
 
-func Unpack(buffer []byte) (packet *Packet, parsed int, err error) {
-	if len(buffer) < 7 {
-		err = ErrPacketTooShort
-		return
+func Unpack(buffer []byte) (*Packet, int, error) {
+	if len(buffer) < HEADER_SIZE {
+		return nil, 0, ErrPacketTooShort
 	}
 	if buffer[0] != MAGIC_NUMBER {
-		err = ErrInvalidMagicNumber
-		return
+		return nil, 0, ErrInvalidMagicNumber
+	}
+	crc := crc8.Checksum(buffer[:HEADER_SIZE-1], table)
+	if crc != buffer[HEADER_SIZE-1] {
+		return nil, 0, ErrInvalidCRC
 	}
 	length := int(buffer[1]) | int(buffer[2])<<8
-	if length > len(buffer)-7 {
-		err = ErrPacketTooShort
-		return
+	if length > len(buffer)-HEADER_SIZE {
+		return nil, 0, ErrPacketTooShort
 	}
-	packet = &Packet{
-		Buffer:   buffer[7 : 7+length],
+	packet := &Packet{
+		Buffer:   buffer[HEADER_SIZE : HEADER_SIZE+length],
 		ConnID:   uint16(buffer[3]) | uint16(buffer[4])<<8,
 		PacketID: uint16(buffer[5]) | uint16(buffer[6])<<8,
 	}
-	parsed = 7 + length
-	return
+	parsed := HEADER_SIZE + length
+	return packet, parsed, nil
 }
 
-func ReadPacket(reader io.Reader) (packet *Packet, err error) {
-
-	header := make([]byte, 7)
-	n, err := reader.Read(header)
-	if err != nil {
-		return
-	}
-	if n < 7 {
-		return nil, ErrPacketTooShort
-	}
-
-	if header[0] != MAGIC_NUMBER {
-		return nil, ErrInvalidMagicNumber
-	}
-
-	length := int(header[1]) | int(header[2])<<8
-	packet = &Packet{
-		Buffer:   make([]byte, length),
-		ConnID:   uint16(header[3]) | uint16(header[4])<<8,
-		PacketID: uint16(header[5]) | uint16(header[6])<<8,
-	}
-	pt := 0
-	for pt < length {
-		n, err = reader.Read(packet.Buffer[pt:length])
-		if err != nil {
-			return
+func ParsePacket(buffer []byte) ([]*Packet, int, error) {
+	packets := make([]*Packet, 0)
+	for ptr := 0; ptr < len(buffer); {
+		packet, parsed, err := Unpack(buffer[ptr:])
+		switch err {
+		case nil:
+			packets = append(packets, packet)
+			ptr += parsed
+		case ErrInvalidMagicNumber, ErrInvalidCRC:
+			offset := bytes.IndexByte(buffer[ptr+1:], MAGIC_NUMBER)
+			if offset == -1 {
+				return packets, 0, nil
+			}
+			ptr += offset + 1
+		case ErrPacketTooShort:
+			remainingBytes := len(buffer) - ptr
+			if remainingBytes >= HEADER_SIZE {
+				offset := bytes.IndexByte(buffer[ptr+1:], MAGIC_NUMBER)
+				if offset == -1 {
+					return packets, 0, nil
+				}
+				ptr += offset + 1
+				continue
+			}
+			return packets, remainingBytes, nil
+		default:
+			return nil, 0, err
 		}
-		pt += n
 	}
-	return
+	return packets, 0, nil
 }
-
-// func ParsePacket(buffer []byte) ([]*Packet, int, error) {
-// 	packets := make([]*Packet, 0)
-// 	for ptr := 0; ptr < len(buffer); {
-// 		packet, parsed, err := Unpack(buffer[ptr:])
-// 		switch err {
-// 		case nil:
-// 			packets = append(packets, packet)
-// 			ptr += parsed
-// 		case ErrInvalidMagicNumber:
-// 			offset := bytes.IndexByte(buffer[ptr+1:], MAGIC_NUMBER)
-// 			if offset == -1 {
-// 				return packets, 0, nil
-// 			}
-// 			ptr += offset + 1
-// 		case ErrPacketTooShort:
-// 			remainingBytes := len(buffer) - ptr
-// 			if remainingBytes > MAX_PACKET_SIZE {
-// 				offset := bytes.IndexByte(buffer[ptr+1:], MAGIC_NUMBER)
-// 				if offset == -1 {
-// 					return packets, 0, nil
-// 				}
-// 				ptr += offset + 1
-// 				continue
-// 			}
-// 			return packets, remainingBytes, nil
-// 		default:
-// 			return nil, 0, err
-// 		}
-// 	}
-// 	return packets, 0, nil
-// }

@@ -17,14 +17,15 @@ type cancelableContext interface {
 
 func ReceiveTCPLoop[T cancelableContext](ctx T, conn *net.TCPConn, gatherer *channel.Gatherer) {
 	defer ctx.Cancel()
+	pBuffer := buffer.NewPackedBuffer()
+	start := 0
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 		}
-		// TODO: use buffer pool
-		newPacket, err := packet.ReadPacket(conn)
+		n, err := conn.Read(pBuffer.Ptr.Buffer[start:])
 		if err != nil {
 			log.Println("error reading packet:", err)
 			if err == io.EOF {
@@ -33,61 +34,28 @@ func ReceiveTCPLoop[T cancelableContext](ctx T, conn *net.TCPConn, gatherer *cha
 			}
 			continue
 		}
-		data := buffer.WithBuffer[[]*packet.Packet]{
-			Thing:  []*packet.Packet{newPacket},
-			Buffer: buffer.NewPackedBuffer(),
+		pBuffer.Ptr.TotalSize += n
+		packets, remain, err := packet.ParsePacket(pBuffer.Ptr.Buffer[:start+n])
+		if err != nil {
+			log.Println("error parsing packet:", err)
+			continue
 		}
-		gatherer.Forward(data.MoveArg())
+		withBuffer := buffer.WithBuffer[[]*packet.Packet]{
+			Thing:  packets,
+			Buffer: pBuffer.Move(),
+		}
+		newBuffer := buffer.NewPackedBuffer()
+		if remain > 0 && remain < n {
+			newBuffer.Ptr.TotalSize = remain
+			copy(newBuffer.Ptr.Buffer[:remain], pBuffer.Ptr.Buffer[n-remain:n])
+		} else {
+			remain = 0
+		}
+		start = remain
+		pBuffer = newBuffer.Move()
+		gatherer.Forward(withBuffer.MoveArg())
 	}
 }
-
-// func processPacketLoop[T cancelableContext](ctx T, channel <-chan buffer.ArgPtr[*buffer.PackedBuffer], gatherer *channel.Gatherer) {
-// 	defer ctx.Cancel()
-// 	for {
-// 		select {
-// 		case <-ctx.Done():
-// 			return
-// 		case data_ := <-channel:
-// 			data := data_.ToOwned()
-// 			packets, _, err := packet.ParsePacket(data.Ptr.Buffer[:data.Ptr.TotalSize])
-// 			if err != nil {
-// 				log.Println("error parsing packet:", err)
-// 				continue
-// 			}
-// 			withBuffer := buffer.WithBuffer[[]*packet.Packet]{
-// 				Thing:  packets,
-// 				Buffer: data.Move(),
-// 			}
-// 			gatherer.Forward(withBuffer.MoveArg())
-// 		}
-// 	}
-// }
-
-// func ReceiveTCPLoop[T cancelableContext](ctx T, conn *net.TCPConn, gatherer *channel.Gatherer) {
-// 	defer ctx.Cancel()
-// 	// reader := bufio.NewReader(conn)
-// 	channel := make(chan buffer.ArgPtr[*buffer.PackedBuffer], 16)
-// 	go processPacketLoop(ctx, channel, gatherer)
-// 	for {
-// 		select {
-// 		case <-ctx.Done():
-// 			return
-// 		default:
-// 		}
-// 		pBuffer := buffer.NewPackedBuffer()
-// 		n, err := conn.Read(pBuffer.Ptr.Buffer[:])
-// 		if err != nil {
-// 			log.Println("error reading packet:", err)
-// 			if err == io.EOF {
-// 				log.Println("stop handling connection from:", conn.RemoteAddr().String())
-// 				return
-// 			}
-// 			continue
-// 		}
-// 		pBuffer.Ptr.TotalSize = n
-// 		channel <- pBuffer.MoveArg()
-// 	}
-// }
 
 func SendTCPLoop[T cancelableContext](ctx T, conn *net.TCPConn, inChan <-chan buffer.ArgPtr[*buffer.PackedBuffer]) {
 	defer ctx.Cancel()
