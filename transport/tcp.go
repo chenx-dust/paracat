@@ -69,8 +69,10 @@ func SendTCPLoop[T cancelableContext](ctx T, conn *net.TCPConn, inChan <-chan bu
 			if err != nil {
 				log.Println("error sending packet:", err)
 				data.Release()
-				ctx.Cancel()
-				return
+				if err == io.EOF {
+					ctx.Cancel()
+					return
+				}
 			}
 			if n != data.Ptr.TotalSize {
 				log.Println("error writing to tcp: wrote", n, "bytes instead of", data.Ptr.TotalSize)

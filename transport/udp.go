@@ -2,6 +2,7 @@ package transport
 
 import (
 	"errors"
+	"io"
 	"log"
 	"net"
 	"unsafe"
@@ -51,8 +52,7 @@ func ReceiveUDPRawPackets(conn *net.UDPConn) (buffer.OwnedPtr[*buffer.PackedBuff
 	n, oobn, flags, udpAddr, err := conn.ReadMsgUDP(packedBuffer.Ptr.Buffer[:], oob)
 	if err != nil {
 		log.Println("error reading packet:", err)
-		packedBuffer.Release()
-		return buffer.OwnedPtr[*buffer.PackedBuffer]{}, nil, err
+		return packedBuffer.Move(), nil, err
 	}
 
 	packetSize := uint16(n)
@@ -60,8 +60,7 @@ func ReceiveUDPRawPackets(conn *net.UDPConn) (buffer.OwnedPtr[*buffer.PackedBuff
 	if flags&unix.MSG_TRUNC != 0 {
 		log.Println("packet truncated, need increase buffer size")
 		err = errors.New("packet truncated")
-		packedBuffer.Release()
-		return buffer.OwnedPtr[*buffer.PackedBuffer]{}, nil, err
+		return packedBuffer.Move(), nil, err
 	}
 
 	var cmsgs []unix.SocketControlMessage
@@ -69,8 +68,7 @@ func ReceiveUDPRawPackets(conn *net.UDPConn) (buffer.OwnedPtr[*buffer.PackedBuff
 		cmsgs, err = unix.ParseSocketControlMessage(oob[:oobn])
 		if err != nil {
 			log.Println("error parsing socket control message:", err)
-			packedBuffer.Release()
-			return buffer.OwnedPtr[*buffer.PackedBuffer]{}, nil, err
+			return packedBuffer.Move(), nil, err
 		}
 
 		for _, cmsg := range cmsgs {
@@ -97,7 +95,7 @@ func ReceiveUDPRawPackets(conn *net.UDPConn) (buffer.OwnedPtr[*buffer.PackedBuff
 func ReceiveUDPPackets(conn *net.UDPConn) (buffer.WithBuffer[[]*packet.Packet], *net.UDPAddr, error) {
 	rawPackets, udpAddr, err := ReceiveUDPRawPackets(conn)
 	if err != nil {
-		return buffer.WithBuffer[[]*packet.Packet]{}, nil, err
+		return buffer.WithBuffer[[]*packet.Packet]{Buffer: rawPackets.Move()}, nil, err
 	}
 
 	packets := make([]*packet.Packet, 0, len(rawPackets.Ptr.SubPackets))
@@ -187,8 +185,10 @@ func SendUDPLoop[T cancelableContext](ctx T, conn *net.UDPConn, dstAddr *net.UDP
 			pBuffer.Release()
 			if err != nil {
 				log.Println("error sending packet:", err)
-				ctx.Cancel()
-				return
+				if err == io.EOF {
+					ctx.Cancel()
+					return
+				}
 			}
 		}
 	}
