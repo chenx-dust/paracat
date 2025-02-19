@@ -49,8 +49,12 @@ func (client *Client) Run() error {
 		return err
 	}
 
-	transport.EnableGRO(client.udpListener)
-	transport.EnableGSO(client.udpListener)
+	if client.cfg.EnableGRO {
+		transport.EnableGRO(client.udpListener)
+	}
+	if client.cfg.EnableGSO {
+		transport.EnableGSO(client.udpListener)
+	}
 
 	log.Println("listening on", client.cfg.ListenAddr)
 

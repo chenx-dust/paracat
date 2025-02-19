@@ -15,6 +15,11 @@ func (client *Client) handleForward() {
 		if err != nil {
 			log.Fatalln("error reading from udp conn:", err)
 		}
+		if rawPackets.Ptr.SubPackets[0] > int(client.cfg.MaxUDPSize) {
+			// log.Println("error receiving udp packets: packet size too large", rawPackets.Ptr.SubPackets[0], ">", client.cfg.MaxUDPSize)
+			rawPackets.Release()
+			continue
+		}
 
 		connID, ok := client.connAddrIDMap[addr.String()]
 		if !ok {
@@ -26,20 +31,20 @@ func (client *Client) handleForward() {
 			log.Println("new connection from:", addr.String())
 		}
 		packets := buffer.NewPackedBuffer()
-		nowPtr := 0
+		nowRawPtr := 0
 		for _, slice := range rawPackets.Ptr.SubPackets {
 			packetID := channel.NewPacketID(&client.idIncrement)
 
 			newPacket := &packet.Packet{
-				Buffer:   rawPackets.Ptr.Buffer[nowPtr : nowPtr+slice],
+				Buffer:   rawPackets.Ptr.Buffer[nowRawPtr : nowRawPtr+slice],
 				ConnID:   connID,
 				PacketID: packetID,
 			}
-			size := newPacket.Pack(packets.Ptr.Buffer[nowPtr:])
+			size := newPacket.Pack(packets.Ptr.Buffer[packets.Ptr.TotalSize:])
 			packets.Ptr.SubPackets = append(packets.Ptr.SubPackets, size)
 			packets.Ptr.TotalSize += size
 
-			nowPtr += slice
+			nowRawPtr += slice
 		}
 		rawPackets.Release()
 		client.scatterer.Scatter(packets.MoveArg())
@@ -69,7 +74,7 @@ func (client *Client) handleReverse(ch <-chan buffer.WithBufferArg[[]*packet.Pac
 				nowPtr += len(packet)
 			}
 			pBuffer.Ptr.TotalSize = nowPtr
-			err := transport.SendUDPPackets(client.udpListener, client.connIDAddrMap[connID], pBuffer.BorrowArg())
+			err := transport.SendUDPPackets(client.udpListener, client.connIDAddrMap[connID], pBuffer.BorrowArg(), client.cfg.EnableGSO)
 			pBuffer.Release()
 			if err != nil {
 				log.Println("error writing to udp:", err)

@@ -12,6 +12,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+const MAX_GSO_NUM = 64
+
 func EnableGRO(conn *net.UDPConn) (err error) {
 	sysconn, err := conn.SyscallConn()
 	if err != nil {
@@ -55,7 +57,7 @@ func ReceiveUDPRawPackets(conn *net.UDPConn) (buffer.OwnedPtr[*buffer.PackedBuff
 		return packedBuffer.Move(), nil, err
 	}
 
-	packetSize := uint16(n)
+	var packetSize uint16
 
 	if flags&unix.MSG_TRUNC != 0 {
 		log.Println("packet truncated, need increase buffer size")
@@ -77,6 +79,8 @@ func ReceiveUDPRawPackets(conn *net.UDPConn) (buffer.OwnedPtr[*buffer.PackedBuff
 				break
 			}
 		}
+	} else {
+		packetSize = uint16(n)
 	}
 
 	nowPtr := 0
@@ -118,30 +122,35 @@ func ReceiveUDPPackets(conn *net.UDPConn) (buffer.WithBuffer[[]*packet.Packet], 
 	}, udpAddr, nil
 }
 
-func SendUDPPackets(conn *net.UDPConn, dstAddr *net.UDPAddr, pBuffer_ buffer.BorrowedArgPtr[*buffer.PackedBuffer]) error {
+func SendUDPPackets(conn *net.UDPConn, dstAddr *net.UDPAddr, pBuffer_ buffer.BorrowedArgPtr[*buffer.PackedBuffer], enableGSO bool) error {
 	pBuffer := pBuffer_.ToBorrowed()
 	gsoSize := 0
 	minSize := 0
 	maxSize := 0
-	if len(pBuffer.Ptr.SubPackets) > 0 {
-		minSize = pBuffer.Ptr.SubPackets[0]
-		maxSize = pBuffer.Ptr.SubPackets[0]
-		for _, slice := range pBuffer.Ptr.SubPackets {
-			if slice < minSize {
-				minSize = slice
+	var oob []byte
+	if enableGSO {
+		if len(pBuffer.Ptr.SubPackets) > 0 {
+			minSize = pBuffer.Ptr.SubPackets[0]
+			maxSize = pBuffer.Ptr.SubPackets[0]
+			for _, slice := range pBuffer.Ptr.SubPackets {
+				if slice < minSize {
+					minSize = slice
+				}
+				if slice > maxSize {
+					maxSize = slice
+				}
 			}
-			if slice > maxSize {
-				maxSize = slice
-			}
+			gsoSize = maxSize
 		}
-		gsoSize = maxSize
+		oob = make([]byte, unix.CmsgSpace(2))
+		cmsgHdr := (*unix.Cmsghdr)(unsafe.Pointer(&oob[0]))
+		cmsgHdr.Level = unix.IPPROTO_UDP
+		cmsgHdr.Type = unix.UDP_SEGMENT
+		cmsgHdr.SetLen(unix.CmsgLen(2))
+	} else {
+		oob = make([]byte, 0)
 	}
-	oob := make([]byte, unix.CmsgSpace(2))
-	cmsg_hdr := (*unix.Cmsghdr)(unsafe.Pointer(&oob[0]))
-	cmsg_hdr.Level = unix.IPPROTO_UDP
-	cmsg_hdr.Type = unix.UDP_SEGMENT
-	cmsg_hdr.SetLen(unix.CmsgLen(2))
-	if maxSize == minSize {
+	if enableGSO && maxSize == minSize && gsoSize > 0 && len(pBuffer.Ptr.SubPackets) <= 64 {
 		*(*uint16)(unsafe.Pointer(&oob[unix.CmsgSpace(0)])) = uint16(gsoSize)
 		n, oobn, err := conn.WriteMsgUDP(pBuffer.Ptr.Buffer[:pBuffer.Ptr.TotalSize], oob, dstAddr)
 		if err != nil {
@@ -158,7 +167,9 @@ func SendUDPPackets(conn *net.UDPConn, dstAddr *net.UDPAddr, pBuffer_ buffer.Bor
 	} else {
 		nowPtr := 0
 		for _, slice := range pBuffer.Ptr.SubPackets {
-			*(*uint16)(unsafe.Pointer(&oob[unix.CmsgSpace(0)])) = uint16(slice)
+			if enableGSO {
+				*(*uint16)(unsafe.Pointer(&oob[unix.CmsgSpace(0)])) = uint16(slice)
+			}
 			n, _, err := conn.WriteMsgUDP(pBuffer.Ptr.Buffer[nowPtr:nowPtr+slice], oob, dstAddr)
 			if err != nil {
 				log.Println("error sending packet:", err)
@@ -173,7 +184,7 @@ func SendUDPPackets(conn *net.UDPConn, dstAddr *net.UDPAddr, pBuffer_ buffer.Bor
 	return nil
 }
 
-func SendUDPLoop[T cancelableContext](ctx T, conn *net.UDPConn, dstAddr *net.UDPAddr, inChan <-chan buffer.ArgPtr[*buffer.PackedBuffer]) {
+func SendUDPLoop[T cancelableContext](ctx T, conn *net.UDPConn, dstAddr *net.UDPAddr, inChan <-chan buffer.ArgPtr[*buffer.PackedBuffer], enableGSO bool) {
 	defer ctx.Cancel()
 	for {
 		select {
@@ -181,7 +192,7 @@ func SendUDPLoop[T cancelableContext](ctx T, conn *net.UDPConn, dstAddr *net.UDP
 			return
 		case pBuffer_ := <-inChan:
 			pBuffer := pBuffer_.ToOwned()
-			err := SendUDPPackets(conn, dstAddr, pBuffer.BorrowArg())
+			err := SendUDPPackets(conn, dstAddr, pBuffer.BorrowArg(), enableGSO)
 			pBuffer.Release()
 			if err != nil {
 				log.Println("error sending packet:", err)

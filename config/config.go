@@ -44,6 +44,9 @@ type Config struct {
 	ReconnectDelay time.Duration // only used in ClientMode
 	UDPTimeout     time.Duration // only used in ServerMode
 	ScatterType    ScatterType
+	MaxUDPSize     uint16
+	EnableGRO      bool
+	EnableGSO      bool
 }
 
 type RelayServer struct {

@@ -19,6 +19,9 @@ type JSONConfig struct {
 	ReconnectDelay *string           `json:"reconnect_delay,omitempty"`
 	UDPTimeout     *string           `json:"udp_timeout,omitempty"`
 	ScatterType    *string           `json:"scatter_type,omitempty"`
+	MaxUDPSize     *uint16           `json:"max_udp_size,omitempty"`
+	EnableGSO      *bool             `json:"enable_gso,omitempty"`
+	EnableGRO      *bool             `json:"enable_gro,omitempty"`
 }
 
 type JSONRelayServer struct {
@@ -38,6 +41,9 @@ const defaultChannelSize = 64
 const defaultReportInterval = 0 * time.Second
 const defaultReconnectDelay = 5 * time.Second
 const defaultUDPTimeout = 10 * time.Minute
+const defaultMaxUDPSize = uint16(1472)
+const defaultEnableGRO = true
+const defaultEnableGSO = true
 
 // LoadFromFile reads and parses a JSON configuration file
 func LoadFromFile(filepath string) (*Config, error) {
@@ -101,6 +107,21 @@ func convertJSONConfig(jc JSONConfig) (*Config, error) {
 		udpTimeout = d
 	}
 
+	maxUDPSize := defaultMaxUDPSize
+	if jc.MaxUDPSize != nil {
+		maxUDPSize = *jc.MaxUDPSize
+	}
+
+	enableGRO := defaultEnableGRO
+	if jc.EnableGRO != nil {
+		enableGRO = *jc.EnableGRO
+	}
+
+	enableGSO := defaultEnableGSO
+	if jc.EnableGSO != nil {
+		enableGSO = *jc.EnableGSO
+	}
+
 	config := &Config{
 		Mode:           mode,
 		ListenAddr:     jc.ListenAddr,
@@ -111,6 +132,9 @@ func convertJSONConfig(jc JSONConfig) (*Config, error) {
 		ReconnectDelay: reconnectDelay,
 		ScatterType:    convertJSONScatterType(jc.ScatterType),
 		UDPTimeout:     udpTimeout,
+		MaxUDPSize:     maxUDPSize,
+		EnableGRO:      enableGRO,
+		EnableGSO:      enableGSO,
 	}
 
 	if jc.RelayType != nil {

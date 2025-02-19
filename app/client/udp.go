@@ -44,15 +44,19 @@ func (client *Client) connectUDPRelay(relay *udpRelay) {
 		time.Sleep(client.cfg.ReconnectDelay)
 		retry++
 	}
-	transport.EnableGRO(relay.conn)
-	transport.EnableGSO(relay.conn)
+	if client.cfg.EnableGRO {
+		transport.EnableGRO(relay.conn)
+	}
+	if client.cfg.EnableGSO {
+		transport.EnableGSO(relay.conn)
+	}
 
 	relay.ctx, relay.cancel = context.WithCancel(context.Background())
 	relay.ch = make(chan buffer.ArgPtr[*buffer.PackedBuffer], client.cfg.ChannelSize)
 	client.scatterer.NewOutput(relay.ch)
 	go client.handleUDPRelayCancel(relay)
 	go client.handleUDPRelayRecv(relay)
-	go transport.SendUDPLoop(relay, relay.conn, relay.addr, relay.ch)
+	go transport.SendUDPLoop(relay, relay.conn, relay.addr, relay.ch, client.cfg.EnableGSO)
 }
 
 func (client *Client) handleUDPRelayCancel(relay *udpRelay) {

@@ -23,8 +23,12 @@ func (server *Server) handleForward(ch <-chan buffer.WithBufferArg[[]*packet.Pac
 					continue
 				}
 				log.Println("new forward conn:", conn.LocalAddr())
-				transport.EnableGRO(conn)
-				transport.EnableGSO(conn)
+				if server.cfg.EnableGRO {
+					transport.EnableGRO(conn)
+				}
+				if server.cfg.EnableGSO {
+					transport.EnableGSO(conn)
+				}
 				server.forwardConns[newPacket.ConnID] = conn
 				go server.handleReverse(conn, newPacket.ConnID)
 			}
@@ -43,7 +47,7 @@ func (server *Server) handleForward(ch <-chan buffer.WithBufferArg[[]*packet.Pac
 				nowPtr += len(packet)
 			}
 			pBuffer.Ptr.TotalSize = nowPtr
-			err := transport.SendUDPPackets(server.forwardConns[connID], remoteAddr, pBuffer.BorrowArg())
+			err := transport.SendUDPPackets(server.forwardConns[connID], remoteAddr, pBuffer.BorrowArg(), server.cfg.EnableGSO)
 			pBuffer.Release()
 			if err != nil {
 				log.Println("error writing to udp:", err)
@@ -70,6 +74,11 @@ func (server *Server) handleReverse(conn *net.UDPConn, connID uint16) {
 			rawPackets.Release()
 			continue
 		}
+		if rawPackets.Ptr.SubPackets[0] > int(server.cfg.MaxUDPSize) {
+			// log.Println("error receiving udp packets: packet size too large", rawPackets.Ptr.SubPackets[0], ">", server.cfg.MaxUDPSize)
+			rawPackets.Release()
+			continue
+		}
 
 		packets := buffer.NewPackedBuffer()
 		nowPtr := 0
@@ -80,7 +89,7 @@ func (server *Server) handleReverse(conn *net.UDPConn, connID uint16) {
 				ConnID:   connID,
 				PacketID: packetID,
 			}
-			size := newPacket.Pack(packets.Ptr.Buffer[nowPtr:])
+			size := newPacket.Pack(packets.Ptr.Buffer[packets.Ptr.TotalSize:])
 			packets.Ptr.SubPackets = append(packets.Ptr.SubPackets, size)
 			packets.Ptr.TotalSize += size
 

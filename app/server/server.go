@@ -60,8 +60,12 @@ func (server *Server) Run() error {
 	log.Println("listening on", server.cfg.ListenAddr)
 	log.Println("dialing to", server.cfg.RemoteAddr)
 
-	transport.EnableGRO(server.udpListener)
-	transport.EnableGSO(server.udpListener)
+	if server.cfg.EnableGRO {
+		transport.EnableGRO(server.udpListener)
+	}
+	if server.cfg.EnableGSO {
+		transport.EnableGSO(server.udpListener)
+	}
 
 	go server.handleForward(server.gatherer.GetOutChan())
 

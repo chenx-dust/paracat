@@ -59,8 +59,12 @@ func (relay *Relay) Run() error {
 		if err != nil {
 			return err
 		}
-		transport.EnableGRO(relay.udpListener)
-		transport.EnableGSO(relay.udpListener)
+		if relay.cfg.EnableGRO {
+			transport.EnableGRO(relay.udpListener)
+		}
+		if relay.cfg.EnableGSO {
+			transport.EnableGSO(relay.udpListener)
+		}
 		log.Println("listening on", relay.cfg.ListenAddr)
 	}
 
@@ -90,8 +94,12 @@ func (relay *Relay) Run() error {
 		if err != nil {
 			return err
 		}
-		transport.EnableGRO(relay.udpDialer)
-		transport.EnableGSO(relay.udpDialer)
+		if relay.cfg.EnableGRO {
+			transport.EnableGRO(relay.udpDialer)
+		}
+		if relay.cfg.EnableGSO {
+			transport.EnableGSO(relay.udpDialer)
+		}
 		log.Println("forwarding udp to", relay.cfg.RemoteAddr)
 	}
 

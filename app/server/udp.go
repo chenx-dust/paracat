@@ -41,7 +41,7 @@ func (server *Server) newUDPConnContext(addr *net.UDPAddr) *udpConnContext {
 	newCtx.conn = server.udpListener
 	go server.handleUDPConnContextCancel(newCtx)
 	go server.handleUDPConnTimeout(newCtx)
-	go transport.SendUDPLoop(newCtx, newCtx.conn, newCtx.addr, newCtx.ch)
+	go transport.SendUDPLoop(newCtx, newCtx.conn, newCtx.addr, newCtx.ch, server.cfg.EnableGSO)
 	server.sourceMutex.Lock()
 	server.sourceUDPAddrs[addr.String()] = newCtx
 	server.sourceMutex.Unlock()
