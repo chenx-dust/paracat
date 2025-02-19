@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"io"
 	"log"
 	"net"
 	"time"
@@ -61,8 +62,11 @@ func (client *Client) handleTCPRelayRecv(ctx *tcpRelay) {
 		packet, err := packet.ReadPacket(ctx.conn)
 		if err != nil {
 			log.Println("error reading from reverse conn:", err)
-			log.Println("close reverse conn from:", ctx.conn.RemoteAddr())
-			return
+			if err == io.EOF {
+				log.Println("close reverse conn from:", ctx.conn.RemoteAddr())
+				return
+			}
+			continue
 		}
 
 		client.filterChan.Forward(packet)
@@ -73,8 +77,10 @@ func (relay *tcpRelay) Write(packet []byte) (n int, err error) {
 	n, err = relay.conn.Write(packet)
 	if err != nil {
 		log.Println("error writing packet:", err)
-		log.Println("stop handling connection to:", relay.conn.RemoteAddr().String())
-		relay.cancel()
+		if err == io.EOF {
+			log.Println("stop handling connection to:", relay.conn.RemoteAddr().String())
+			relay.cancel()
+		}
 	} else if n != len(packet) {
 		log.Println("error writing packet: wrote", n, "bytes instead of", len(packet))
 	}

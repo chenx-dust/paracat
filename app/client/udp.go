@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"io"
 	"log"
 	"net"
 	"time"
@@ -62,8 +63,10 @@ func (client *Client) handleUDPRelayRecv(relay *udpRelay) {
 		n, err := relay.conn.Read(buf)
 		if err != nil {
 			log.Println("error reading from reverse conn:", err)
-			log.Println("close reverse conn from:", relay.conn.RemoteAddr())
-			return
+			if err == io.EOF {
+				log.Println("close reverse conn from:", relay.conn.RemoteAddr())
+				return
+			}
 		}
 
 		newPacket, err := packet.Unpack(buf[:n])
